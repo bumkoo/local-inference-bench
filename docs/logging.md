@@ -60,20 +60,19 @@ $env:RUST_LOG="local_inference_bench=info,rig::completions=trace"; cargo run -- 
 ### 프로파일 TOML 확장
 
 ```toml
-[server]
-# ... 기존 설정 ...
+[debug]
 verbose_prompt = true    # chat template 적용 후 프롬프트 출력
 log_file = "data/experiments/server.log"  # 서버 로그 파일 저장
-
-[debug]
-rig_trace = true         # RIG 요청/응답 TRACE 레벨 활성화
+rig_trace = true         # RIG 요청/응답 TRACE 레벨 활성화 (향후)
 ```
 
-### server.rs에서 verbose_prompt 전달
+### server.rs에서 debug 필드 전달
 
 ```rust
-// ServerArgs 빌더에 추가
-.verbose_prompt(profile.server.verbose_prompt)
+// ServerArgs에 직접 대입 (typestate 빌더 우회)
+args.verbose_prompt = profile.debug.verbose_prompt;
+args.verbose = profile.debug.verbose;
+args.log_file = profile.debug.log_file.clone();
 ```
 
 ### 장점
@@ -142,8 +141,9 @@ cargo run -- run qwen3-8b basic-completion npc-dialogue
 
 프로파일에 `verbose_prompt` 옵션 추가:
 ```toml
-[server]
+[debug]
 verbose_prompt = true
+log_file = "data/experiments/server.log"
 ```
 
 ### 2단계 (다음): tracing-subscriber 파일 라우팅

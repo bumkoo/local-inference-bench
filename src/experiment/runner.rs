@@ -16,11 +16,18 @@ pub struct ExperimentRunner {
     profile: ServerProfile,
     feature: Feature,
     prompt_set: PromptSet,
+    /// 실제 생성된 서버 로그 파일 경로 (타임스탬프 포함)
+    server_log_file: Option<String>,
 }
 
 impl ExperimentRunner {
     pub fn new(profile: ServerProfile, feature: Feature, prompt_set: PromptSet) -> Self {
-        Self { profile, feature, prompt_set }
+        Self { profile, feature, prompt_set, server_log_file: None }
+    }
+
+    pub fn with_server_log(mut self, log_file: Option<String>) -> Self {
+        self.server_log_file = log_file;
+        self
     }
 
     pub async fn run(&self) -> anyhow::Result<ExperimentStore> {
@@ -51,6 +58,12 @@ impl ExperimentRunner {
         }
 
         store.finalize()?;
+
+        // 서버 로그 필터링 (DEBUG 제거 → 실험 폴더에 server_filtered.log)
+        if let Some(ref lf) = self.server_log_file {
+            let log_path = std::path::Path::new(lf);
+            let _ = ExperimentStore::filter_server_log(log_path, &store.dir);
+        }
 
         if let Some(ref s) = store.meta.summary {
             info!("완료: {}/{} 성공, 평균 {:.0}ms, {:.1}tok/s",

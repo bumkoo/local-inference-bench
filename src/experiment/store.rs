@@ -2,7 +2,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::feature::Feature;
 use crate::profile::ServerProfile;
@@ -144,6 +144,34 @@ impl ExperimentStore {
         let json = serde_json::to_string_pretty(&self.meta)?;
         fs::write(self.dir.join("experiment.json"), json)?;
         Ok(())
+    }
+
+    /// 서버 로그에서 DEBUG 줄을 제거한 server_filtered.log 생성
+    /// 원본은 유지하고 지정 디렉토리에 별도 파일로 저장
+    pub fn filter_server_log(log_path: &Path, dest_dir: &Path) -> anyhow::Result<Option<PathBuf>> {
+        if !log_path.exists() {
+            return Ok(None);
+        }
+        let content = fs::read_to_string(log_path)?;
+        let filtered: Vec<&str> = content
+            .lines()
+            .filter(|line| !line.contains("\x1b[33mD "))  // ANSI color D (DEBUG)
+            .collect();
+
+        let filtered_path = dest_dir.join("server_filtered.log");
+        fs::write(&filtered_path, filtered.join("\n"))?;
+
+        let original_lines = content.lines().count();
+        let filtered_lines = filtered.len();
+        let removed = original_lines - filtered_lines;
+        tracing::info!(
+            "서버 로그 필터링: {} → {} (DEBUG {}줄 제거)",
+            log_path.file_name().unwrap_or_default().to_string_lossy(),
+            filtered_path.display(),
+            removed,
+        );
+
+        Ok(Some(filtered_path))
     }
 
     pub fn load_runs(&self) -> anyhow::Result<Vec<RunRecord>> {

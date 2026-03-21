@@ -136,6 +136,10 @@ pub struct DebugConfig {
     #[serde(default)]
     pub verbose: bool,
     pub log_file: Option<String>,
+    /// llama-server 콘솔 로그 레벨 (-lv N)
+    /// 0=콘솔 I만(가장 깔끔), 미설정=기본, 1+=점점 상세
+    /// 주의: --log-file은 -lv와 무관하게 항상 전 레벨 기록
+    pub verbosity: Option<u8>,
 }
 
 // ── [timeouts] ─────────────────────────────────────────

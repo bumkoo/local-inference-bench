@@ -9,18 +9,31 @@ port = 8081
 parallel = 4
 no_webui = false
 
+[debug]
+verbose_prompt = true
+log_file = "data/experiments/server.log"
+# verbosity: llama-server 콘솔 로그 레벨 (-lv N)
+# 0=콘솔 I만(가장 깔끔), 미설정=기본, 1+=점점 상세
+# 주의: --log-file은 -lv와 무관하게 항상 D/I/W 전부 기록
+verbosity = 0
+
+
 [model]
 main = "..\\models\\gemma-3-4b-it-Q4_K_M.gguf"
 
 [gpu]
 layers = 99
+flash_attn = true
+
 
 [context]
 ctx_size = 8192
-batch_size = 1024
+batch_size = 2048
 
-[debug]
-verbose_prompt = true
+[cache]
+type_k = "q8_0"
+type_v = "q8_0"
+
 
 [inference]
 jinja = true

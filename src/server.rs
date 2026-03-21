@@ -7,7 +7,15 @@ use tracing::info;
 
 use crate::profile::ServerProfile;
 
-pub fn launch_server(profile: &ServerProfile) -> anyhow::Result<LmcppServer> {
+pub struct ServerHandle {
+    /// Drop 시 서버 프로세스 종료 (필드 읽기 없이 lifetime으로 서버 유지)
+    #[allow(dead_code)]
+    pub server: LmcppServer,
+    /// 실제 생성된 서버 로그 파일 경로 (타임스탬프 포함)
+    pub log_file: Option<String>,
+}
+
+pub fn launch_server(profile: &ServerProfile) -> anyhow::Result<ServerHandle> {
     log_profile(profile);
 
     let main_model = std::fs::canonicalize(&profile.model.main)?;
@@ -22,6 +30,7 @@ pub fn launch_server(profile: &ServerProfile) -> anyhow::Result<LmcppServer> {
         .build()?;
 
     let server_args = build_server_args(profile, main_model)?;
+    let actual_log_file = server_args.log_file.clone();
 
     let server = LmcppServerLauncher::builder()
         .toolchain(toolchain)
@@ -31,7 +40,7 @@ pub fn launch_server(profile: &ServerProfile) -> anyhow::Result<LmcppServer> {
         .load()?;
 
     info!("서버 준비 완료: {}", profile.api_base_url());
-    Ok(server)
+    Ok(ServerHandle { server, log_file: actual_log_file })
 }
 
 /// 빌더 typestate 제약 우회: 필수 필드만 빌더로 → build() → Option 필드 직접 대입
@@ -94,7 +103,32 @@ fn build_server_args(
     // [debug]
     args.verbose_prompt = profile.debug.verbose_prompt;
     args.verbose = profile.debug.verbose;
-    args.log_file = profile.debug.log_file.clone();
+    args.verbosity = profile.debug.verbosity;
+    args.log_file = profile.debug.log_file.as_ref().map(|lf| {
+        // 파일명에 타임스탬프 추가: server.log → server_20260321_210300.log
+        let path = std::path::Path::new(lf);
+        let stem = path.file_stem().unwrap_or_default().to_string_lossy();
+        let ext = path.extension().map(|e| e.to_string_lossy().to_string()).unwrap_or_default();
+        let ts = chrono::Local::now().format("%Y%m%d_%H%M%S");
+        let new_name = if ext.is_empty() {
+            format!("{}_{}", stem, ts)
+        } else {
+            format!("{}_{}.{}", stem, ts, ext)
+        };
+        let new_path = path.with_file_name(new_name);
+
+        // 상대 경로 → 절대 경로 변환 (lmcpp가 다른 작업 디렉토리에서 spawn)
+        if new_path.is_relative() {
+            std::env::current_dir()
+                .map(|cwd| cwd.join(&new_path).to_string_lossy().to_string())
+                .unwrap_or_else(|_| new_path.to_string_lossy().to_string())
+        } else {
+            new_path.to_string_lossy().to_string()
+        }
+    });
+    if let Some(ref lf) = args.log_file {
+        info!("  log_file: {}", lf);
+    }
 
     Ok(args)
 }

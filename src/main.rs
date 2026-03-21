@@ -63,7 +63,7 @@ async fn main() -> anyhow::Result<()> {
         Commands::Serve { profile: name } => {
             let prof = profile::ServerProfile::load_by_name(&name)?;
             info!("=== 서버 시작: {} ===", prof.profile.name);
-            let _server = server::launch_server(&prof)?;
+            let _handle = server::launch_server(&prof)?;
             info!("종료: Ctrl+C");
             tokio::signal::ctrl_c().await?;
         }
@@ -79,10 +79,11 @@ async fn main() -> anyhow::Result<()> {
             info!("  프롬프트: {} ({})", ps.prompt_set.name, ps.prompt_set.description);
 
             // 서버 시작
-            let _server = server::launch_server(&prof)?;
+            let handle = server::launch_server(&prof)?;
 
             // 실험 실행
-            let runner = experiment::ExperimentRunner::new(prof, feat, ps);
+            let runner = experiment::ExperimentRunner::new(prof, feat, ps)
+                .with_server_log(handle.log_file);
             let store = runner.run().await?;
 
             info!("결과 저장: {}", store.dir.display());
