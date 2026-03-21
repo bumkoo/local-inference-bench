@@ -1,10 +1,12 @@
 # RIG 기능: Agent with Tool (함수 호출 테스트)
 [feature]
 name = "agent-tool"
-description = "rig agent with tool calling - NPC 행동 결정"
+description = "rig agent with tool calling - NPC 무공조회/관계확인/소지품확인"
 type = "agent_tool"
 
 [agent_tool]
 max_tokens = 512
 temperature = 0.6
-# 도구 정의는 코드에서 등록 (게임 행동: 공격/방어/대화/이동)
+# 도구 호출 → 결과 → 재요청 왕복 최대 횟수
+# LLM이 도구를 호출하지 않고 텍스트 응답하면 즉시 종료
+max_turns = 5

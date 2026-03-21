@@ -44,6 +44,8 @@ pub struct AgentToolParams {
     pub max_tokens: u32,
     #[serde(default = "default_temperature")]
     pub temperature: f32,
+    #[serde(default = "default_max_turns")]
+    pub max_turns: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

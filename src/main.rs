@@ -2,6 +2,7 @@ mod experiment;
 mod feature;
 mod profile;
 mod server;
+mod tools;
 
 use clap::{Parser, Subcommand};
 use tracing::info;
