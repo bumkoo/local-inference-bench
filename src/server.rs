@@ -38,7 +38,10 @@ pub fn launch_server(profile: &ServerProfile) -> anyhow::Result<LmcppServer> {
             .port(profile.server.port)
             .no_webui(profile.server.no_webui)
             .ctx_size(profile.server.ctx_size as u64)
+            .batch_size(profile.server.batch_size as u64)
             .parallel(profile.server.parallel as u64)
+            .cache_type_k(&profile.cache.type_k)
+            .cache_type_v(&profile.cache.type_v)
             .model_draft(draft_model.to_string_lossy().to_string())
             .draft_max(spec.draft_max as u64)
             .build()
@@ -49,7 +52,10 @@ pub fn launch_server(profile: &ServerProfile) -> anyhow::Result<LmcppServer> {
             .port(profile.server.port)
             .no_webui(profile.server.no_webui)
             .ctx_size(profile.server.ctx_size as u64)
+            .batch_size(profile.server.batch_size as u64)
             .parallel(profile.server.parallel as u64)
+            .cache_type_k(&profile.cache.type_k)
+            .cache_type_v(&profile.cache.type_v)
             .build()
     };
 
