@@ -1,0 +1,6 @@
+/target
+/data/experiments/
+/models/*.gguf
+*.pdb
+.env
+Cargo.lock

@@ -1,0 +1,11 @@
+# RIG 기능: Multi-turn 대화 (여러 턴의 대화 시뮬레이션)
+[feature]
+name = "multi-turn"
+description = "rig agent multi-turn - 연속 대화 컨텍스트 유지 테스트"
+type = "multi_turn"
+
+[multi_turn]
+max_tokens = 256
+temperature = 0.7
+max_turns = 5
+# prompt_set의 prompts를 순서대로 연속 대화로 실행

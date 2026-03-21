@@ -1,0 +1,10 @@
+# RIG 기능: Agent (시스템 프롬프트 + 컨텍스트 기반 에이전트)
+[feature]
+name = "agent-preamble"
+description = "rig agent with preamble - NPC 페르소나 기반 대화"
+type = "agent"
+
+[agent]
+max_tokens = 256
+temperature = 0.8
+# preamble은 prompt_set의 system_prompt에서 주입

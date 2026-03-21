@@ -1,0 +1,32 @@
+[package]
+name = "local-inference-bench"
+version = "0.1.0"
+edition = "2024"
+description = "Local LLM experimentation bench: Server Profile × RIG Feature × Prompt Set"
+
+[dependencies]
+# 서버 관리
+lmcpp = "0.1"
+
+# LLM 클라이언트 프레임워크
+rig-core = { version = "0.31", features = ["derive"] }
+
+# 비동기 런타임
+tokio = { version = "1", features = ["full"] }
+
+# 에러 + 직렬화
+anyhow = "1.0"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+
+# 로깅
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# 시간 + ID
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1", features = ["v4"] }
+
+# CLI
+clap = { version = "4", features = ["derive"] }

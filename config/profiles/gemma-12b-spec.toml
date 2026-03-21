@@ -1,0 +1,31 @@
+# 서버 프로파일: Gemma 12B + 1B 스펙큘레이션
+[profile]
+name = "gemma-12b-spec"
+description = "Gemma 12B 메인 + 1B 드래프트 speculative decoding"
+
+[server]
+host = "127.0.0.1"
+port = 8081
+ctx_size = 4096
+batch_size = 512
+parallel = 2
+no_webui = true
+
+[model]
+main = "..\\models\\gemma-3-12b-it-Q3_K_M.gguf"
+
+[cache]
+type_k = "q8_0"
+type_v = "q8_0"
+
+[speculation]
+draft = "..\\models\\gemma-3-1b-it.Q4_K_M.gguf"
+draft_max = 24
+
+[timeouts]
+load_secs = 180
+download_secs = 0
+
+[toolchain]
+build_mode = "install_only"
+curl_enabled = false

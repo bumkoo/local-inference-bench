@@ -1,0 +1,10 @@
+# RIG 기능: 기본 completion (가장 단순한 호출)
+[feature]
+name = "basic-completion"
+description = "rig completion::Prompt - 단순 프롬프트/응답"
+type = "completion"
+
+# completion 고유 설정
+[completion]
+max_tokens = 256
+temperature = 0.7

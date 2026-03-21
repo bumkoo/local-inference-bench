@@ -1,0 +1,27 @@
+# 서버 프로파일: Qwen3 8B (기본 설정)
+[profile]
+name = "qwen3-8b"
+description = "Qwen3 8B 기본 추론 테스트"
+
+[server]
+host = "127.0.0.1"
+port = 8081
+ctx_size = 4096
+batch_size = 512
+parallel = 2
+no_webui = false
+
+[model]
+main = "..\\models\\Qwen3-8B-Q4_K_M.gguf"
+
+[cache]
+type_k = "f16"
+type_v = "f16"
+
+[timeouts]
+load_secs = 120
+download_secs = 0
+
+[toolchain]
+build_mode = "install_only"
+curl_enabled = false

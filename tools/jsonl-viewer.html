@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>JSONL Viewer - local-inference-bench</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family:'Segoe UI',sans-serif; background:#1a1a2e; color:#e0e0e0; padding:20px; }
+h1 { color:#7ec8e3; margin-bottom:12px; font-size:20px; }
+.drop-zone { border:2px dashed #444; border-radius:12px; padding:40px; text-align:center;
+  margin-bottom:20px; cursor:pointer; transition:border-color .2s; }
+.drop-zone:hover,.drop-zone.over { border-color:#7ec8e3; }
+.drop-zone input { display:none; }
+#summary { background:#16213e; border-radius:8px; padding:16px; margin-bottom:16px; display:none; }
+#summary .stat { display:inline-block; margin-right:24px; }
+#summary .stat b { color:#7ec8e3; }
+table { width:100%; border-collapse:collapse; font-size:13px; }
+th { background:#16213e; color:#7ec8e3; padding:10px 8px; text-align:left; position:sticky; top:0; }
+td { padding:8px; border-bottom:1px solid #2a2a4a; vertical-align:top; }
+tr:hover { background:#16213e; }
+.success { color:#4caf50; } .fail { color:#f44336; }
+.response-cell { max-width:500px; white-space:pre-wrap; word-break:break-word;
+  max-height:120px; overflow-y:auto; font-size:12px; line-height:1.5; }
+.expand-btn { background:#2a2a4a; color:#7ec8e3; border:none; padding:2px 8px;
+  border-radius:4px; cursor:pointer; font-size:11px; margin-top:4px; }
+.num { text-align:right; font-family:Consolas,monospace; }
+.filter-bar { margin-bottom:12px; display:none; gap:8px; align-items:center; flex-wrap:wrap; }
+.filter-bar select,.filter-bar input { background:#16213e; color:#e0e0e0; border:1px solid #333;
+  padding:6px 10px; border-radius:6px; font-size:13px; }
+</style>
+</head>
+<body>
+<h1>JSONL Viewer</h1>
+<div class="drop-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
+  runs.jsonl 또는 experiment.json 파일을 드래그하거나 클릭하세요
+  <input type="file" id="fileInput" accept=".jsonl,.json" multiple>
+</div>
+<div id="summary"></div>
+<div class="filter-bar" id="filterBar">
+  <span>필터:</span>
+  <select id="filterPrompt"><option value="">전체 프롬프트</option></select>
+  <select id="filterSuccess"><option value="">성공/실패</option><option value="true">성공</option><option value="false">실패</option></select>
+  <input type="text" id="filterText" placeholder="응답 텍스트 검색...">
+</div>
+<div id="output"></div>
+<script>
+let allRecords = [];
+const dropZone = document.getElementById('dropZone');
+const fileInput = document.getElementById('fileInput');
+['dragenter','dragover'].forEach(e => dropZone.addEventListener(e, ev => { ev.preventDefault(); dropZone.classList.add('over'); }));
+['dragleave','drop'].forEach(e => dropZone.addEventListener(e, ev => { ev.preventDefault(); dropZone.classList.remove('over'); }));
+dropZone.addEventListener('drop', ev => handleFiles(ev.dataTransfer.files));
+fileInput.addEventListener('change', ev => handleFiles(ev.target.files));
+
+function handleFiles(files) {
+  for (const file of files) {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const text = e.target.result;
+      if (file.name.endsWith('.jsonl')) {
+        const records = text.trim().split('\n').filter(l=>l.trim()).map(l=>JSON.parse(l));
+        allRecords = records;
+        renderTable(records); renderSummary(records); populateFilters(records);
+      } else if (file.name.endsWith('.json')) {
+        renderExperimentMeta(JSON.parse(text));
+      }
+    };
+    reader.readAsText(file);
+  }
+}
+
+function renderSummary(records) {
+  const el = document.getElementById('summary');
+  const ok = records.filter(r=>r.success);
+  const lats = ok.map(r=>r.latency_ms);
+  const avg = lats.length ? (lats.reduce((a,b)=>a+b,0)/lats.length).toFixed(0) : 0;
+  const avgTps = ok.length ? (ok.reduce((a,r)=>a+r.tokens_per_sec,0)/ok.length).toFixed(1) : 0;
+  el.innerHTML = `<span class="stat"><b>${records.length}</b> 총 실행</span>
+    <span class="stat success"><b>${ok.length}</b> 성공</span>
+    <span class="stat fail"><b>${records.length-ok.length}</b> 실패</span>
+    <span class="stat"><b>${avg}ms</b> 평균 지연</span>
+    <span class="stat"><b>${avgTps}tok/s</b> 평균 처리량</span>`;
+  el.style.display='block';
+}
+
+function populateFilters(records) {
+  const sel = document.getElementById('filterPrompt');
+  sel.innerHTML = '<option value="">전체 프롬프트</option>';
+  [...new Set(records.map(r=>r.prompt_id))].forEach(id => {
+    const o = document.createElement('option'); o.value=id;
+    o.textContent=records.find(r=>r.prompt_id===id).prompt_label; sel.appendChild(o);
+  });
+  document.getElementById('filterBar').style.display='flex';
+  ['filterPrompt','filterSuccess','filterText'].forEach(id =>
+    document.getElementById(id).addEventListener('input', applyFilters));
+}
+
+function applyFilters() {
+  let f = [...allRecords];
+  const pid = document.getElementById('filterPrompt').value;
+  const suc = document.getElementById('filterSuccess').value;
+  const txt = document.getElementById('filterText').value.toLowerCase();
+  if (pid) f = f.filter(r=>r.prompt_id===pid);
+  if (suc) f = f.filter(r=>String(r.success)===suc);
+  if (txt) f = f.filter(r=>r.response.toLowerCase().includes(txt));
+  renderTable(f); renderSummary(f);
+}
+
+function renderTable(records) {
+  if (!records.length) { document.getElementById('output').innerHTML='<p>데이터 없음</p>'; return; }
+  let html = `<table><thead><tr><th>#</th><th>프롬프트</th><th>상태</th><th>지연(ms)</th><th>토큰</th><th>tok/s</th><th>응답</th></tr></thead><tbody>`;
+  records.forEach(r => {
+    const cls = r.success ? 'success' : 'fail';
+    const resp = esc(r.response);
+    const short = resp.length>200 ? resp.substring(0,200)+'...' : resp;
+    html += `<tr><td class="num">${r.run_id}</td><td>${esc(r.prompt_label)}</td>
+      <td class="${cls}">${r.success?'O':'X'}</td><td class="num">${r.latency_ms.toLocaleString()}</td>
+      <td class="num">${r.tokens_generated}</td><td class="num">${r.tokens_per_sec.toFixed(1)}</td>
+      <td><div class="response-cell">${short}</div>${resp.length>200?`<button class="expand-btn" onclick="this.previousElementSibling.textContent=decodeURIComponent('${encodeURIComponent(r.response)}');this.remove()">전체보기</button>`:''}</td></tr>`;
+  });
+  html += '</tbody></table>';
+  document.getElementById('output').innerHTML = html;
+}
+
+function renderExperimentMeta(m) {
+  const s = m.summary;
+  let html = `<div style="background:#16213e;border-radius:8px;padding:16px;margin-bottom:16px">
+    <h2 style="color:#7ec8e3;font-size:16px;margin-bottom:8px">${esc(m.id)}</h2>
+    <p><b>프로파일:</b> ${esc(m.profile_name)} | <b>기능:</b> ${esc(m.feature_name)} | <b>프롬프트:</b> ${esc(m.prompt_set_name)}</p>
+    <p><b>생성:</b> ${m.created_at}</p>`;
+  if (s) html += `<p><b>결과:</b> ${s.successful_runs}/${s.total_runs} 성공, 평균 ${s.avg_latency_ms.toFixed(0)}ms, ${s.avg_tokens_per_sec.toFixed(1)}tok/s</p>`;
+  html += '</div>';
+  document.getElementById('output').insertAdjacentHTML('afterbegin', html);
+}
+
+function esc(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+</script>
+</body>
+</html>
