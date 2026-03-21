@@ -6,17 +6,18 @@ description = "Qwen3 8B 기본 추론 테스트"
 [server]
 host = "127.0.0.1"
 port = 8081
-ctx_size = 4096
-batch_size = 512
 parallel = 2
-no_webui = false
+no_webui = true
 
 [model]
 main = "..\\models\\Qwen3-8B-Q4_K_M.gguf"
 
-[cache]
-type_k = "f16"
-type_v = "f16"
+[gpu]
+layers = 99
+
+[context]
+ctx_size = 4096
+batch_size = 512
 
 [timeouts]
 load_secs = 120

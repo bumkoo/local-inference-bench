@@ -2,19 +2,33 @@ use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
 /// 서버 프로파일 - 하나의 서버 설정 조합
+/// 모든 섹션은 [profile], [model] 외에는 Option 또는 Default
+/// TOML에 안 적으면 llama-server 기본값 사용
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ServerProfile {
     pub profile: ProfileMeta,
     pub server: ServerConfig,
     pub model: ModelConfig,
     #[serde(default)]
+    pub gpu: GpuConfig,
+    #[serde(default)]
+    pub cpu: CpuConfig,
+    #[serde(default)]
+    pub context: ContextConfig,
+    #[serde(default)]
     pub cache: CacheConfig,
     pub speculation: Option<SpeculationConfig>,
+    #[serde(default)]
+    pub inference: InferenceConfig,
+    #[serde(default)]
+    pub debug: DebugConfig,
     #[serde(default)]
     pub timeouts: TimeoutsConfig,
     #[serde(default)]
     pub toolchain: ToolchainConfig,
 }
+
+// ── [profile] ──────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProfileMeta {
@@ -23,50 +37,108 @@ pub struct ProfileMeta {
     pub description: String,
 }
 
+// ── [server] ───────────────────────────────────────────
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ServerConfig {
     #[serde(default = "default_host")]
     pub host: String,
     #[serde(default = "default_port")]
     pub port: u16,
-    #[serde(default = "default_ctx_size")]
-    pub ctx_size: u32,
-    #[serde(default = "default_batch_size")]
-    pub batch_size: u32,
-    #[serde(default = "default_parallel")]
-    pub parallel: u32,
+    pub parallel: Option<u64>,
     #[serde(default)]
     pub no_webui: bool,
+    pub timeout: Option<u64>,
 }
+
+// ── [model] ────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModelConfig {
     pub main: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CacheConfig {
-    #[serde(default = "default_cache_type")]
-    pub type_k: String,
-    #[serde(default = "default_cache_type")]
-    pub type_v: String,
+// ── [gpu] ──────────────────────────────────────────────
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct GpuConfig {
+    pub layers: Option<u64>,
+    #[serde(default)]
+    pub flash_attn: bool,
+    pub device: Option<String>,
+    pub main_gpu: Option<u32>,
+    pub split_mode: Option<String>,
 }
 
-impl Default for CacheConfig {
-    fn default() -> Self {
-        Self {
-            type_k: "f16".to_string(),
-            type_v: "f16".to_string(),
-        }
-    }
+// ── [cpu] ──────────────────────────────────────────────
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct CpuConfig {
+    pub threads: Option<u64>,
+    pub threads_batch: Option<u64>,
+    #[serde(default)]
+    pub mlock: bool,
+    #[serde(default)]
+    pub no_mmap: bool,
+    pub numa: Option<String>,
 }
+
+// ── [context] ──────────────────────────────────────────
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ContextConfig {
+    pub ctx_size: Option<u64>,
+    pub batch_size: Option<u64>,
+    pub ubatch_size: Option<u64>,
+}
+
+// ── [cache] ────────────────────────────────────────────
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct CacheConfig {
+    pub type_k: Option<String>,
+    pub type_v: Option<String>,
+    pub cache_reuse: Option<u64>,
+    #[serde(default)]
+    pub no_kv_offload: bool,
+}
+
+// ── [speculation] ──────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SpeculationConfig {
     pub draft: String,
-    #[serde(default = "default_draft_max")]
-    pub draft_max: u32,
+    pub draft_max: Option<u64>,
+    pub draft_min: Option<u64>,
+    pub draft_p_min: Option<f32>,
+    pub gpu_layers_draft: Option<u32>,
+    pub ctx_size_draft: Option<u64>,
 }
+
+// ── [inference] ────────────────────────────────────────
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct InferenceConfig {
+    pub reasoning_format: Option<String>,
+    #[serde(default)]
+    pub jinja: bool,
+    pub chat_template: Option<String>,
+    #[serde(default)]
+    pub special_tokens: bool,
+}
+
+// ── [debug] ────────────────────────────────────────────
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct DebugConfig {
+    #[serde(default)]
+    pub verbose_prompt: bool,
+    #[serde(default)]
+    pub verbose: bool,
+    pub log_file: Option<String>,
+}
+
+// ── [timeouts] ─────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TimeoutsConfig {
@@ -81,6 +153,8 @@ impl Default for TimeoutsConfig {
         Self { load_secs: 120, download_secs: 0 }
     }
 }
+
+// ── [toolchain] ────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolchainConfig {
@@ -99,19 +173,16 @@ impl Default for ToolchainConfig {
     }
 }
 
-// 기본값 함수들
+// ── 기본값 ─────────────────────────────────────────────
+
 fn default_host() -> String { "127.0.0.1".to_string() }
 fn default_port() -> u16 { 8081 }
-fn default_ctx_size() -> u32 { 4096 }
-fn default_batch_size() -> u32 { 512 }
-fn default_parallel() -> u32 { 2 }
-fn default_cache_type() -> String { "f16".to_string() }
-fn default_draft_max() -> u32 { 24 }
 fn default_load_secs() -> u64 { 120 }
 fn default_build_mode() -> String { "install_only".to_string() }
 
+// ── impl ServerProfile ────────────────────────────────
+
 impl ServerProfile {
-    /// 프로파일 TOML 파일 로드
     pub fn load(path: &Path) -> anyhow::Result<Self> {
         let content = std::fs::read_to_string(path)
             .map_err(|e| anyhow::anyhow!("프로파일 로드 실패 {:?}: {}", path, e))?;
@@ -120,13 +191,11 @@ impl ServerProfile {
         Ok(profile)
     }
 
-    /// profiles 디렉토리에서 이름으로 찾기
     pub fn load_by_name(name: &str) -> anyhow::Result<Self> {
         let path = PathBuf::from("config/profiles").join(format!("{}.toml", name));
         Self::load(&path)
     }
 
-    /// 모든 프로파일 목록 조회
     pub fn list_all() -> anyhow::Result<Vec<(String, Self)>> {
         let dir = PathBuf::from("config/profiles");
         let mut profiles = Vec::new();
@@ -163,7 +232,6 @@ impl ServerProfile {
         self.speculation.is_some()
     }
 
-    /// 서버 API base URL
     pub fn api_base_url(&self) -> String {
         format!("http://{}:{}/v1", self.server.host, self.server.port)
     }

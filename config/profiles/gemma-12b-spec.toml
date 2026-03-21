@@ -6,21 +6,23 @@ description = "Gemma 12B 메인 + 1B 드래프트 speculative decoding"
 [server]
 host = "127.0.0.1"
 port = 8081
-ctx_size = 4096
-batch_size = 512
 parallel = 2
 no_webui = true
 
 [model]
 main = "..\\models\\gemma-3-12b-it-Q3_K_M.gguf"
 
-[cache]
-type_k = "q8_0"
-type_v = "q8_0"
+[gpu]
+layers = 33
+
+[context]
+ctx_size = 4096
+batch_size = 512
 
 [speculation]
 draft = "..\\models\\gemma-3-1b-it.Q4_K_M.gguf"
 draft_max = 24
+gpu_layers_draft = 99
 
 [timeouts]
 load_secs = 180

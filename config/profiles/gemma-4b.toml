@@ -1,23 +1,26 @@
-# 서버 프로파일: Gemma 12B + 1B 스펙큘레이션
+# 서버 프로파일: Gemma 4B
 [profile]
-name = "gemma-4b-spec"
-description = "Gemma 4B"
+name = "gemma-4b"
+description = "Gemma 4B GPU 전체 오프로드"
 
 [server]
 host = "127.0.0.1"
 port = 8081
-ctx_size = 8192
-batch_size = 1024
 parallel = 4
 no_webui = false
 
 [model]
 main = "..\\models\\gemma-3-4b-it-Q4_K_M.gguf"
 
-[cache]
-type_k = "q8_0"
-type_v = "q8_0"
+[gpu]
+layers = 99
 
+[context]
+ctx_size = 8192
+batch_size = 1024
+
+[debug]
+verbose_prompt = true
 
 [timeouts]
 load_secs = 180

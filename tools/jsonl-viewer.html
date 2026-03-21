@@ -14,37 +14,92 @@ h1 { color:#7ec8e3; margin-bottom:12px; font-size:20px; }
 #summary { background:#16213e; border-radius:8px; padding:16px; margin-bottom:16px; display:none; }
 #summary .stat { display:inline-block; margin-right:24px; }
 #summary .stat b { color:#7ec8e3; }
-table { width:100%; border-collapse:collapse; font-size:13px; }
-th { background:#16213e; color:#7ec8e3; padding:10px 8px; text-align:left; position:sticky; top:0; }
-td { padding:8px; border-bottom:1px solid #2a2a4a; vertical-align:top; }
-tr:hover { background:#16213e; }
-.success { color:#4caf50; } .fail { color:#f44336; }
-.response-cell { max-width:500px; white-space:pre-wrap; word-break:break-word;
-  max-height:120px; overflow-y:auto; font-size:12px; line-height:1.5; }
-.expand-btn { background:#2a2a4a; color:#7ec8e3; border:none; padding:2px 8px;
-  border-radius:4px; cursor:pointer; font-size:11px; margin-top:4px; }
-.num { text-align:right; font-family:Consolas,monospace; }
 .filter-bar { margin-bottom:12px; display:none; gap:8px; align-items:center; flex-wrap:wrap; }
 .filter-bar select,.filter-bar input { background:#16213e; color:#e0e0e0; border:1px solid #333;
   padding:6px 10px; border-radius:6px; font-size:13px; }
+/* 카드 레이아웃 */
+.run-card { background:#16213e; border-radius:10px; margin-bottom:16px; overflow:hidden;
+  border:1px solid #2a2a4a; transition:border-color .2s; }
+.run-card:hover { border-color:#7ec8e3; }
+.run-header { display:flex; justify-content:space-between; align-items:center;
+  padding:12px 16px; background:#0f3460; cursor:pointer; user-select:none; }
+.run-header .left { display:flex; gap:12px; align-items:center; }
+.run-header .run-id { color:#7ec8e3; font-weight:bold; font-size:14px; min-width:40px; }
+.run-header .label { color:#e0e0e0; font-size:14px; }
+.run-header .right { display:flex; gap:16px; font-size:12px; font-family:Consolas,monospace; }
+.run-header .right span { color:#aaa; }
+.run-header .right b { color:#7ec8e3; }
+.success-badge { background:#2e7d32; color:#fff; padding:2px 8px; border-radius:4px; font-size:11px; }
+.fail-badge { background:#c62828; color:#fff; padding:2px 8px; border-radius:4px; font-size:11px; }
+.run-body { display:none; padding:16px; }
+.run-body.open { display:block; }
+.prompt-section { margin-bottom:12px; }
+.prompt-section .section-label { color:#7ec8e3; font-size:11px; font-weight:bold;
+  text-transform:uppercase; letter-spacing:1px; margin-bottom:4px; }
+.prompt-box { background:#0d1b2a; border-radius:6px; padding:12px; font-size:13px;
+  line-height:1.6; white-space:pre-wrap; word-break:break-word; max-height:200px;
+  overflow-y:auto; border-left:3px solid #333; }
+.prompt-box.system { border-left-color:#ff9800; }
+.prompt-box.user { border-left-color:#2196f3; }
+.prompt-box.response { border-left-color:#4caf50; }
+.prompt-box.template { border-left-color:#9c27b0; font-family:Consolas,monospace; font-size:11px; }
+.divider { border:none; border-top:1px solid #2a2a4a; margin:8px 0; }
+/* experiment meta */
+.meta-card { background:#16213e; border-radius:10px; padding:16px; margin-bottom:16px;
+  border:1px solid #2a2a4a; }
+.meta-card h2 { color:#7ec8e3; font-size:16px; margin-bottom:8px; }
+.meta-card p { font-size:13px; margin-bottom:4px; }
+.meta-card b { color:#7ec8e3; }
+.template-toggle { background:#2a2a4a; color:#7ec8e3; border:none; padding:6px 12px;
+  border-radius:6px; cursor:pointer; font-size:12px; margin-top:8px; }
+#templateSection { display:none; margin-top:12px; }
+/* 뷰 모드 토글 */
+.view-toggle { display:none; gap:8px; margin-bottom:12px; }
+.view-toggle button { background:#16213e; color:#aaa; border:1px solid #333; padding:6px 14px;
+  border-radius:6px; cursor:pointer; font-size:13px; }
+.view-toggle button.active { color:#7ec8e3; border-color:#7ec8e3; }
+/* 테이블 뷰 */
+#tableView { display:none; }
+table { width:100%; border-collapse:collapse; font-size:13px; }
+th { background:#16213e; color:#7ec8e3; padding:10px 8px; text-align:left; position:sticky; top:0; z-index:1; }
+td { padding:8px; border-bottom:1px solid #2a2a4a; vertical-align:top; }
+tr:hover { background:#16213e; }
+.num { text-align:right; font-family:Consolas,monospace; }
+.response-cell { max-width:500px; white-space:pre-wrap; word-break:break-word;
+  max-height:120px; overflow-y:auto; font-size:12px; line-height:1.5; }
 </style>
 </head>
 <body>
-<h1>JSONL Viewer</h1>
+<h1>🔍 JSONL Viewer</h1>
+
 <div class="drop-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
-  runs.jsonl 또는 experiment.json 파일을 드래그하거나 클릭하세요
+  runs.jsonl 또는 experiment.json 파일을 드래그하거나 클릭하세요 (복수 선택 가능)
   <input type="file" id="fileInput" accept=".jsonl,.json" multiple>
 </div>
+
+<div id="metaArea"></div>
 <div id="summary"></div>
+
+<div class="view-toggle" id="viewToggle">
+  <button class="active" onclick="setView('card')">📋 카드 뷰</button>
+  <button onclick="setView('table')">📊 테이블 뷰</button>
+</div>
+
 <div class="filter-bar" id="filterBar">
   <span>필터:</span>
   <select id="filterPrompt"><option value="">전체 프롬프트</option></select>
   <select id="filterSuccess"><option value="">성공/실패</option><option value="true">성공</option><option value="false">실패</option></select>
   <input type="text" id="filterText" placeholder="응답 텍스트 검색...">
 </div>
-<div id="output"></div>
+
+<div id="cardView"></div>
+<div id="tableView"></div>
+
 <script>
 let allRecords = [];
+let experimentMeta = null;
+let currentView = 'card';
+
 const dropZone = document.getElementById('dropZone');
 const fileInput = document.getElementById('fileInput');
 ['dragenter','dragover'].forEach(e => dropZone.addEventListener(e, ev => { ev.preventDefault(); dropZone.classList.add('over'); }));
@@ -58,14 +113,38 @@ function handleFiles(files) {
     reader.onload = e => {
       const text = e.target.result;
       if (file.name.endsWith('.jsonl')) {
-        const records = text.trim().split('\n').filter(l=>l.trim()).map(l=>JSON.parse(l));
-        allRecords = records;
-        renderTable(records); renderSummary(records); populateFilters(records);
+        allRecords = text.trim().split('\n').filter(l=>l.trim()).map(l=>JSON.parse(l));
+        renderAll(allRecords);
       } else if (file.name.endsWith('.json')) {
-        renderExperimentMeta(JSON.parse(text));
+        experimentMeta = JSON.parse(text);
+        renderExperimentMeta(experimentMeta);
       }
     };
-    reader.readAsText(file);
+    reader.readAsText(file, 'UTF-8');
+  }
+}
+
+function renderAll(records) {
+  renderSummary(records);
+  populateFilters(records);
+  document.getElementById('viewToggle').style.display = 'flex';
+  if (currentView === 'card') renderCards(records);
+  else renderTable(records);
+}
+
+function setView(mode) {
+  currentView = mode;
+  document.querySelectorAll('.view-toggle button').forEach(b => b.classList.remove('active'));
+  event.target.classList.add('active');
+  const filtered = getFiltered();
+  if (mode === 'card') {
+    document.getElementById('cardView').style.display = 'block';
+    document.getElementById('tableView').style.display = 'none';
+    renderCards(filtered);
+  } else {
+    document.getElementById('cardView').style.display = 'none';
+    document.getElementById('tableView').style.display = 'block';
+    renderTable(filtered);
   }
 }
 
@@ -76,64 +155,131 @@ function renderSummary(records) {
   const avg = lats.length ? (lats.reduce((a,b)=>a+b,0)/lats.length).toFixed(0) : 0;
   const avgTps = ok.length ? (ok.reduce((a,r)=>a+r.tokens_per_sec,0)/ok.length).toFixed(1) : 0;
   el.innerHTML = `<span class="stat"><b>${records.length}</b> 총 실행</span>
-    <span class="stat success"><b>${ok.length}</b> 성공</span>
-    <span class="stat fail"><b>${records.length-ok.length}</b> 실패</span>
+    <span class="stat" style="color:#4caf50"><b>${ok.length}</b> 성공</span>
+    <span class="stat" style="color:#f44336"><b>${records.length-ok.length}</b> 실패</span>
     <span class="stat"><b>${avg}ms</b> 평균 지연</span>
-    <span class="stat"><b>${avgTps}tok/s</b> 평균 처리량</span>`;
-  el.style.display='block';
+    <span class="stat"><b>${avgTps} tok/s</b> 평균 처리량</span>`;
+  el.style.display = 'block';
 }
 
 function populateFilters(records) {
   const sel = document.getElementById('filterPrompt');
   sel.innerHTML = '<option value="">전체 프롬프트</option>';
   [...new Set(records.map(r=>r.prompt_id))].forEach(id => {
-    const o = document.createElement('option'); o.value=id;
-    o.textContent=records.find(r=>r.prompt_id===id).prompt_label; sel.appendChild(o);
+    const o = document.createElement('option'); o.value = id;
+    o.textContent = records.find(r=>r.prompt_id===id)?.prompt_label || id;
+    sel.appendChild(o);
   });
-  document.getElementById('filterBar').style.display='flex';
+  document.getElementById('filterBar').style.display = 'flex';
   ['filterPrompt','filterSuccess','filterText'].forEach(id =>
     document.getElementById(id).addEventListener('input', applyFilters));
 }
 
-function applyFilters() {
+function getFiltered() {
   let f = [...allRecords];
   const pid = document.getElementById('filterPrompt').value;
   const suc = document.getElementById('filterSuccess').value;
   const txt = document.getElementById('filterText').value.toLowerCase();
   if (pid) f = f.filter(r=>r.prompt_id===pid);
   if (suc) f = f.filter(r=>String(r.success)===suc);
-  if (txt) f = f.filter(r=>r.response.toLowerCase().includes(txt));
-  renderTable(f); renderSummary(f);
+  if (txt) f = f.filter(r=>(r.response||'').toLowerCase().includes(txt));
+  return f;
 }
 
+function applyFilters() {
+  const f = getFiltered();
+  renderSummary(f);
+  if (currentView === 'card') renderCards(f);
+  else renderTable(f);
+}
+
+// ── 카드 뷰 ──
+function renderCards(records) {
+  if (!records.length) { document.getElementById('cardView').innerHTML='<p>데이터 없음</p>'; return; }
+  const html = records.map(r => {
+    const badge = r.success
+      ? '<span class="success-badge">성공</span>'
+      : '<span class="fail-badge">실패</span>';
+    return `
+    <div class="run-card">
+      <div class="run-header" onclick="this.nextElementSibling.classList.toggle('open')">
+        <div class="left">
+          <span class="run-id">#${r.run_id}</span>
+          <span class="label">${esc(r.prompt_label)}</span>
+          ${badge}
+        </div>
+        <div class="right">
+          <span>지연 <b>${r.latency_ms.toLocaleString()}ms</b></span>
+          <span>토큰 <b>${r.tokens_generated}</b></span>
+          <span>속도 <b>${r.tokens_per_sec.toFixed(1)} t/s</b></span>
+        </div>
+      </div>
+      <div class="run-body">
+        <div class="prompt-section">
+          <div class="section-label">🟠 System Prompt</div>
+          <div class="prompt-box system">${esc(r.system_prompt || '(없음)')}</div>
+        </div>
+        <hr class="divider">
+        <div class="prompt-section">
+          <div class="section-label">🔵 User Prompt</div>
+          <div class="prompt-box user">${esc(r.user_prompt || '(없음)')}</div>
+        </div>
+        <hr class="divider">
+        <div class="prompt-section">
+          <div class="section-label">🟢 Response</div>
+          <div class="prompt-box response">${esc(r.response || '(없음)')}</div>
+        </div>
+        ${r.extra ? `<hr class="divider"><div class="prompt-section">
+          <div class="section-label">📎 Extra</div>
+          <div class="prompt-box template">${esc(JSON.stringify(r.extra, null, 2))}</div>
+        </div>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+  document.getElementById('cardView').innerHTML = html;
+}
+
+// ── 테이블 뷰 ──
 function renderTable(records) {
-  if (!records.length) { document.getElementById('output').innerHTML='<p>데이터 없음</p>'; return; }
-  let html = `<table><thead><tr><th>#</th><th>프롬프트</th><th>상태</th><th>지연(ms)</th><th>토큰</th><th>tok/s</th><th>응답</th></tr></thead><tbody>`;
+  if (!records.length) { document.getElementById('tableView').innerHTML='<p>데이터 없음</p>'; return; }
+  let html = `<table><thead><tr>
+    <th>#</th><th>프롬프트</th><th>상태</th><th>지연(ms)</th><th>토큰</th><th>tok/s</th><th>응답</th>
+  </tr></thead><tbody>`;
   records.forEach(r => {
-    const cls = r.success ? 'success' : 'fail';
-    const resp = esc(r.response);
-    const short = resp.length>200 ? resp.substring(0,200)+'...' : resp;
-    html += `<tr><td class="num">${r.run_id}</td><td>${esc(r.prompt_label)}</td>
-      <td class="${cls}">${r.success?'O':'X'}</td><td class="num">${r.latency_ms.toLocaleString()}</td>
-      <td class="num">${r.tokens_generated}</td><td class="num">${r.tokens_per_sec.toFixed(1)}</td>
-      <td><div class="response-cell">${short}</div>${resp.length>200?`<button class="expand-btn" onclick="this.previousElementSibling.textContent=decodeURIComponent('${encodeURIComponent(r.response)}');this.remove()">전체보기</button>`:''}</td></tr>`;
+    const cls = r.success ? 'success-badge' : 'fail-badge';
+    const resp = esc(r.response || '');
+    const short = resp.length > 200 ? resp.substring(0,200)+'…' : resp;
+    html += `<tr>
+      <td class="num">${r.run_id}</td>
+      <td>${esc(r.prompt_label)}</td>
+      <td><span class="${cls}">${r.success?'O':'X'}</span></td>
+      <td class="num">${r.latency_ms.toLocaleString()}</td>
+      <td class="num">${r.tokens_generated}</td>
+      <td class="num">${r.tokens_per_sec.toFixed(1)}</td>
+      <td><div class="response-cell">${short}</div></td>
+    </tr>`;
   });
   html += '</tbody></table>';
-  document.getElementById('output').innerHTML = html;
+  document.getElementById('tableView').innerHTML = html;
 }
 
+// ── experiment.json 메타 ──
 function renderExperimentMeta(m) {
   const s = m.summary;
-  let html = `<div style="background:#16213e;border-radius:8px;padding:16px;margin-bottom:16px">
-    <h2 style="color:#7ec8e3;font-size:16px;margin-bottom:8px">${esc(m.id)}</h2>
+  let html = `<div class="meta-card">
+    <h2>📊 ${esc(m.id)}</h2>
     <p><b>프로파일:</b> ${esc(m.profile_name)} | <b>기능:</b> ${esc(m.feature_name)} | <b>프롬프트:</b> ${esc(m.prompt_set_name)}</p>
     <p><b>생성:</b> ${m.created_at}</p>`;
-  if (s) html += `<p><b>결과:</b> ${s.successful_runs}/${s.total_runs} 성공, 평균 ${s.avg_latency_ms.toFixed(0)}ms, ${s.avg_tokens_per_sec.toFixed(1)}tok/s</p>`;
+  if (s) html += `<p><b>결과:</b> ${s.successful_runs}/${s.total_runs} 성공, 평균 ${s.avg_latency_ms.toFixed(0)}ms, ${s.avg_tokens_per_sec.toFixed(1)} tok/s</p>`;
+  if (m.chat_template) {
+    html += `<button class="template-toggle" onclick="document.getElementById('templateSection').style.display=document.getElementById('templateSection').style.display==='none'?'block':'none'">🟣 Chat Template 보기</button>
+    <div id="templateSection"><div class="prompt-box template">${esc(m.chat_template)}</div></div>`;
+  }
   html += '</div>';
-  document.getElementById('output').insertAdjacentHTML('afterbegin', html);
+  document.getElementById('metaArea').innerHTML = html;
 }
 
-function esc(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 </script>
 </body>
 </html>

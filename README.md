@@ -9,13 +9,13 @@
 cargo run -- list
 
 # 서버만 띄우기
-cargo run -- serve qwen3-8b
+cargo run -- serve gemma-4b
 
 # 실험 실행 (3축 지정)
-cargo run -- run qwen3-8b agent-preamble npc-dialogue
+cargo run -- run gemma-4b agent-preamble npc-dialogue
 
 # 실험 결과 필터링
-cargo run -- list experiments --profile qwen3-8b
+cargo run -- list experiments --profile gemma3-4b
 cargo run -- list experiments --feature agent-tool
 ```
 
