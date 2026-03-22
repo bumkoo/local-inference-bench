@@ -1,0 +1,15 @@
+# 전략 3: ColBERT — Dense top-K(threshold) ∪ Sparse top-K/2 → ColBERT 리랭킹
+[feature]
+name = "rag-colbert"
+description = "Dense top-K(threshold) ∪ Sparse top-K/2 → ColBERT MaxSim 리랭킹"
+type = "rag"
+
+[rag]
+max_tokens = 512
+temperature = 0.6
+
+[rag.strategy]
+type = "colbert_rerank"
+candidate_k = 10
+top_k = 3
+dense_threshold = 0.38

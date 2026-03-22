@@ -1,0 +1,17 @@
+# 전략 2: Hybrid — Dense top-K(threshold) ∪ Sparse top-K/2 → 7:3 리랭킹
+[feature]
+name = "rag-hybrid"
+description = "Dense top-K(threshold) ∪ Sparse top-K/2 → 가중 합산 리랭킹"
+type = "rag"
+
+[rag]
+max_tokens = 512
+temperature = 0.6
+
+[rag.strategy]
+type = "hybrid"
+candidate_k = 10
+top_k = 3
+dense_threshold = 0.38
+dense_weight = 0.7
+sparse_weight = 0.3

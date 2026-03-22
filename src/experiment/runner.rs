@@ -298,6 +298,7 @@ impl ExperimentRunner {
     ) -> anyhow::Result<()> {
         let params = self.feature.rag.as_ref()
             .ok_or_else(|| anyhow::anyhow!("rag 설정 없음"))?;
+        let strategy = &params.strategy;
 
         // ort 초기화 + BGE-M3 임베더 로딩
         bge_m3_onnx_rust::init_ort();
@@ -309,7 +310,7 @@ impl ExperimentRunner {
         // 지식 데이터 → 벡터 스토어 적재
         let knowledge_path = std::path::Path::new(&params.knowledge_path);
         let vector_store = rag::load_knowledge(knowledge_path, &mut embedder)?;
-        info!("벡터 스토어: {}개 문서 적재 완료", vector_store.len());
+        info!("벡터 스토어: {}개 문서 적재 완료, 전략: {}", vector_store.len(), strategy.name());
 
         let total = self.prompt_set.total_runs();
         let mut run_id = 0;
@@ -317,28 +318,31 @@ impl ExperimentRunner {
         for prompt in &self.prompt_set.prompts {
             for repeat_idx in 0..self.prompt_set.repeat {
                 run_id += 1;
-                info!("[{}/{}] {} (top_k={})", run_id, total, prompt.label, params.top_k);
+                info!("[{}/{}] {} (전략={}, top_k={})",
+                    run_id, total, prompt.label, strategy.name(), strategy.top_k());
 
                 let system = prompt.build_system_prompt(&self.prompt_set.system_prompt);
                 let mut history: Vec<Message> = Vec::new();
 
                 let start = Instant::now();
 
-                // 벡터 검색 → 검색 결과를 system_prompt에 합침 → LLM 호출
+                // 전략 기반 벡터 검색 → preamble 합침 → LLM 호출
                 let result = chat_with_rag(
                     client, &system, &prompt.user, &mut history,
-                    &mut embedder, &vector_store, params.top_k,
+                    &mut embedder, &vector_store, strategy,
                 ).await;
                 let latency_ms = start.elapsed().as_millis() as u64;
 
                 // 검색 결과도 기록 (디버깅용)
-                let search_results = vector_store.query(&prompt.user, &mut embedder, params.top_k)
+                let search_results = vector_store.query(&prompt.user, &mut embedder, strategy)
                     .ok()
                     .map(|results| results.iter().map(|r| {
-                        // UTF-8 안전한 미리보기 (80자)
                         let preview: String = r.text.chars().take(80).collect();
                         serde_json::json!({
-                            "id": r.id, "score": r.score, "text_preview": preview,
+                            "id": r.id,
+                            "score": r.score,
+                            "detail": r.detail,
+                            "text_preview": preview,
                         })
                     }).collect::<Vec<_>>());
 
@@ -364,7 +368,8 @@ impl ExperimentRunner {
                 let tps = calc_tps(tokens, latency_ms);
 
                 let extra = serde_json::json!({
-                    "top_k": params.top_k,
+                    "strategy": strategy.name(),
+                    "top_k": strategy.top_k(),
                     "usage": usage_extra,
                     "search_results": search_results,
                     "knowledge_docs": vector_store.len(),

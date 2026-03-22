@@ -1,0 +1,14 @@
+# 전략 1: Dense Only — top-K 선별 후 threshold 필터
+[feature]
+name = "rag-dense"
+description = "Dense top-K → threshold 필터 (가장 빠르고 안정적)"
+type = "rag"
+
+[rag]
+max_tokens = 512
+temperature = 0.6
+
+[rag.strategy]
+type = "dense_only"
+top_k = 3
+threshold = 0.38

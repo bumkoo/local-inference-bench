@@ -25,7 +25,7 @@ use rig::completion::{Message, PromptError, Prompt};
 use rig::providers::openai;
 
 use bge_m3_onnx_rust::BgeM3Embedder;
-use crate::rag::{VectorStore, format_context};
+use crate::rag::{VectorStore, SearchStrategy, format_context};
 
 /// chat 결과 — 응답 텍스트 + 토큰 사용량
 #[derive(Debug, Clone)]
@@ -87,10 +87,10 @@ pub async fn chat_with_rag(
     history: &mut Vec<Message>,
     embedder: &mut BgeM3Embedder,
     store: &VectorStore,
-    top_k: usize,
+    strategy: &SearchStrategy,
 ) -> Result<ChatResult, PromptError> {
-    // 벡터 검색
-    let results = store.query(prompt, embedder, top_k)
+    // 전략 기반 벡터 검색
+    let results = store.query(prompt, embedder, strategy)
         .map_err(|e| PromptError::CompletionError(
             rig::completion::CompletionError::RequestError(e.to_string().into())
         ))?;
@@ -100,8 +100,8 @@ pub async fn chat_with_rag(
         system_prompt.to_string()
     } else {
         let context = format_context(&results);
-        tracing::info!("[rag] {}개 문서 검색됨 (최고 유사도: {:.3})",
-            results.len(), results[0].score);
+        tracing::info!("[rag:{}] {}개 문서 검색됨 (최고 점수: {:.3})",
+            strategy.name(), results.len(), results[0].score);
         format!("{}\n\n[참고 자료]\n{}", system_prompt, context)
     };
 
