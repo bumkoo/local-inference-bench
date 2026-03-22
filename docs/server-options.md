@@ -34,6 +34,11 @@
 - **영향**: VRAM 사용량 감소 + 긴 컨텍스트에서 속도 향상
 - **주의**: 모든 GPU/모델 조합에서 지원되지 않을 수 있음. RTX 2070(Turing)에서는 제한적
 - **실험 포인트**: flash_attn on/off에 따른 성능 및 VRAM 사용량 비교
+- **벤치마크 (RTX 2070 Super, Gemma 4B Q4_K_M)**:
+  - flash_attn=true, cache f16: **~65 t/s** (eval) — flash_attn 단독은 속도 저하 없음
+  - flash_attn=true, cache q8_0: **~28 t/s** (eval) — **56% 성능 저하**
+  - 원인: q8_0 KV cache 양자화의 역양자화 오버헤드 (flash_attn과 무관)
+  - 결론: **RTX 2070에서는 flash_attn=true 가능, cache는 f16(기본) 권장**
 
 ### device
 - **타입**: `Option<String>`
@@ -93,6 +98,10 @@
   - `q8_0` → 품질 거의 동일, VRAM ~50% 절약
   - `q4_0` → 품질 약간 저하, VRAM ~75% 절약
 - **실험 포인트**: 같은 모델에서 캐시 양자화에 따른 품질/속도 트레이드오프
+- **벤치마크 (RTX 2070 Super, Gemma 4B Q4_K_M)**:
+  - f16(기본): **~65 t/s** (eval)
+  - q8_0: **~28 t/s** (eval) — 56% 성능 저하, 역양자화 오버헤드가 원인
+  - 결론: RTX 2070에서는 **f16(기본) 권장**. VRAM 절약이 필요한 경우에만 양자화 고려.
 
 ### cache_reuse
 - **타입**: `Option<u64>`

@@ -42,7 +42,8 @@ impl Tool for CheckRelationship {
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
-        tracing::info!("[tool-call] 관계 조회: {}", args.target);
+        let start = std::time::Instant::now();
+        tracing::info!("[tool-call] 관계 조회 요청: target={:?}", args.target);
 
         let result = match args.target.as_str() {
             s if s.contains("옥교룡") => {
@@ -64,13 +65,18 @@ impl Tool for CheckRelationship {
                  과거 이모백의 스승을 암살한 원수."
             }
             _ => {
-                return Ok(format!(
+                let not_found = format!(
                     "'{}' — 해당 인물과의 관계 기록이 없습니다. 강호에서 아직 인연이 닿지 않은 자입니다.",
                     args.target
-                ));
+                );
+                tracing::info!("[tool-result] 관계 조회 완료: target={:?}, {}ms, 미발견",
+                    args.target, start.elapsed().as_millis());
+                return Ok(not_found);
             }
         };
 
+        tracing::info!("[tool-result] 관계 조회 완료: target={:?}, {}ms, {}bytes",
+            args.target, start.elapsed().as_millis(), result.len());
         Ok(result.to_string())
     }
 }

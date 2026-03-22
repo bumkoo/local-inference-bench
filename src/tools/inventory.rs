@@ -42,7 +42,8 @@ impl Tool for CheckInventory {
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
-        tracing::info!("[tool-call] 소지품 조회: {}", args.character);
+        let start = std::time::Instant::now();
+        tracing::info!("[tool-call] 소지품 조회 요청: character={:?}", args.character);
 
         let result = match args.character.as_str() {
             s if s.contains("이모백") => {
@@ -66,13 +67,18 @@ impl Tool for CheckInventory {
                  [기타] 약방 장부, 은냥 150량."
             }
             _ => {
-                return Ok(format!(
+                let not_found = format!(
                     "'{}' — 해당 인물의 소지품 정보가 없습니다.",
                     args.character
-                ));
+                );
+                tracing::info!("[tool-result] 소지품 조회 완료: character={:?}, {}ms, 미발견",
+                    args.character, start.elapsed().as_millis());
+                return Ok(not_found);
             }
         };
 
+        tracing::info!("[tool-result] 소지품 조회 완료: character={:?}, {}ms, {}bytes",
+            args.character, start.elapsed().as_millis(), result.len());
         Ok(result.to_string())
     }
 }

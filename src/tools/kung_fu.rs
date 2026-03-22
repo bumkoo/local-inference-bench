@@ -42,7 +42,8 @@ impl Tool for LookupKungFu {
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
-        tracing::info!("[tool-call] 무공 조회: {}", args.name);
+        let start = std::time::Instant::now();
+        tracing::info!("[tool-call] 무공 조회 요청: name={:?}", args.name);
 
         // 게임 데이터 시뮬레이션 — 나중에 실제 DB/JSON으로 교체
         let result = match args.name.as_str() {
@@ -77,6 +78,8 @@ impl Tool for LookupKungFu {
             }
         };
 
+        tracing::info!("[tool-result] 무공 조회 완료: name={:?}, {}ms, {}bytes",
+            args.name, start.elapsed().as_millis(), result.len());
         Ok(result)
     }
 }

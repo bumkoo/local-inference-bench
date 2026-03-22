@@ -1,9 +1,7 @@
 # 프롬프트 세트: NPC 도구 호출 테스트
 # LLM이 도구(무공조회, 관계확인, 소지품확인)를 자연스럽게 호출하도록 유도
-[prompt_set]
-name = "npc-tool-test"
-description = "NPC 도구 호출(무공/관계/소지품) 품질 테스트"
 
+# 최상위 키: [prompt_set] 섹션 위에 있어야 PromptSet 구조체로 파싱됨
 system_prompt = """당신은 무협 RPG의 NPC입니다.
 캐릭터의 성격과 배경에 맞게 대화하세요.
 필요한 정보가 있으면 반드시 도구를 사용하여 조회한 후 대답하세요.
@@ -11,6 +9,10 @@ system_prompt = """당신은 무협 RPG의 NPC입니다.
 
 max_tokens = 512
 repeat = 1
+
+[prompt_set]
+name = "npc-tool-test"
+description = "NPC 도구 호출(무공/관계/소지품) 품질 테스트"
 
 # ── 무공 조회 유도 ──
 [[prompts]]

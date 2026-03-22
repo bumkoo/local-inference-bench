@@ -23,6 +23,7 @@ main = "..\\models\\gemma-3-4b-it-Q4_K_M.gguf"
 
 [gpu]
 layers = 99
+# flash_attn: RTX 2070(Turing SM7.5)에서 속도 저하 없음. 활성화 유지.
 flash_attn = true
 
 
@@ -30,9 +31,11 @@ flash_attn = true
 ctx_size = 8192
 batch_size = 2048
 
-[cache]
-type_k = "q8_0"
-type_v = "q8_0"
+# [cache]
+# KV cache q8_0/q4_0: RTX 2070에서 65→28 t/s 성능 저하 (역양자화 오버헤드)
+# flash_attn과 무관, cache 양자화 단독 원인. f16(기본값) 유지 권장.
+# type_k = "q8_0"
+# type_v = "q8_0"
 
 
 [inference]
