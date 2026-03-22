@@ -31,3 +31,6 @@ uuid = { version = "1", features = ["v4"] }
 # CLI
 clap = { version = "4", features = ["derive"] }
 thiserror = "2.0.18"
+
+# BGE-M3 ONNX 인프로세스 임베딩
+bge-m3-onnx-rust = { path = "../bge-m3-onnx-rust" }

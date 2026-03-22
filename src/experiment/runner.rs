@@ -5,9 +5,10 @@ use rig::providers::openai;
 use std::time::Instant;
 use tracing::info;
 
-use crate::chat::{chat, chat_with_tools};
+use crate::chat::{chat, chat_with_tools, chat_with_rag};
 use crate::feature::Feature;
 use crate::profile::ServerProfile;
+use crate::rag;
 use crate::tools::{LookupKungFu, CheckRelationship, CheckInventory};
 use super::prompt_set::PromptSet;
 use super::store::{ExperimentStore, RunRecord};
@@ -55,6 +56,7 @@ impl ExperimentRunner {
             "agent" => self.run_agent(&client, &mut store).await?,
             "agent_tool" => self.run_agent_tool(&client, &mut store).await?,
             "multi_turn" => self.run_multi_turn(&client, &mut store).await?,
+            "rag" => self.run_rag(&client, &mut store).await?,
             other => anyhow::bail!("알 수 없는 feature type: {}", other),
         }
 
@@ -274,6 +276,98 @@ impl ExperimentRunner {
                     "total_turns": max_turns,
                     "usage": usage_extra,
                     "conversation": conversation_log.clone(),
+                });
+
+                store.append_run(&RunRecord {
+                    run_id, prompt_id: prompt.id.clone(), prompt_label: prompt.label.clone(),
+                    repeat_index: repeat_idx, timestamp: Utc::now(),
+                    system_prompt: system.clone(), user_prompt: prompt.user.clone(),
+                    response, success, latency_ms, tokens_generated: tokens,
+                    tokens_per_sec: tps, extra: Some(extra),
+                })?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Feature: rag - BGE-M3 벡터 검색 → preamble 합침 → LLM 응답
+    async fn run_rag(
+        &self,
+        client: &openai::CompletionsClient,
+        store: &mut ExperimentStore,
+    ) -> anyhow::Result<()> {
+        let params = self.feature.rag.as_ref()
+            .ok_or_else(|| anyhow::anyhow!("rag 설정 없음"))?;
+
+        // ort 초기화 + BGE-M3 임베더 로딩
+        bge_m3_onnx_rust::init_ort();
+        info!("BGE-M3 임베더 로딩: {}", params.onnx_model);
+        let mut embedder = bge_m3_onnx_rust::BgeM3Embedder::new(
+            &params.onnx_model, &params.tokenizer,
+        )?;
+
+        // 지식 데이터 → 벡터 스토어 적재
+        let knowledge_path = std::path::Path::new(&params.knowledge_path);
+        let vector_store = rag::load_knowledge(knowledge_path, &mut embedder)?;
+        info!("벡터 스토어: {}개 문서 적재 완료", vector_store.len());
+
+        let total = self.prompt_set.total_runs();
+        let mut run_id = 0;
+
+        for prompt in &self.prompt_set.prompts {
+            for repeat_idx in 0..self.prompt_set.repeat {
+                run_id += 1;
+                info!("[{}/{}] {} (top_k={})", run_id, total, prompt.label, params.top_k);
+
+                let system = prompt.build_system_prompt(&self.prompt_set.system_prompt);
+                let mut history: Vec<Message> = Vec::new();
+
+                let start = Instant::now();
+
+                // 벡터 검색 → 검색 결과를 system_prompt에 합침 → LLM 호출
+                let result = chat_with_rag(
+                    client, &system, &prompt.user, &mut history,
+                    &mut embedder, &vector_store, params.top_k,
+                ).await;
+                let latency_ms = start.elapsed().as_millis() as u64;
+
+                // 검색 결과도 기록 (디버깅용)
+                let search_results = vector_store.query(&prompt.user, &mut embedder, params.top_k)
+                    .ok()
+                    .map(|results| results.iter().map(|r| {
+                        // UTF-8 안전한 미리보기 (80자)
+                        let preview: String = r.text.chars().take(80).collect();
+                        serde_json::json!({
+                            "id": r.id, "score": r.score, "text_preview": preview,
+                        })
+                    }).collect::<Vec<_>>());
+
+                let (response, success, usage_extra) = match result {
+                    Ok(cr) => {
+                        let tps = calc_tps(cr.output_tokens as usize, latency_ms);
+                        log_result(latency_ms, cr.output_tokens as usize, tps, true);
+                        let usage = serde_json::json!({
+                            "input_tokens": cr.input_tokens,
+                            "output_tokens": cr.output_tokens,
+                            "total_tokens": cr.total_tokens,
+                            "cached_input_tokens": cr.cached_input_tokens,
+                        });
+                        (cr.response, true, usage)
+                    }
+                    Err(e) => {
+                        info!("  에러: {}", e);
+                        (format!("[ERROR] {}", e), false, serde_json::json!(null))
+                    }
+                };
+
+                let tokens = estimate_tokens(&response);
+                let tps = calc_tps(tokens, latency_ms);
+
+                let extra = serde_json::json!({
+                    "top_k": params.top_k,
+                    "usage": usage_extra,
+                    "search_results": search_results,
+                    "knowledge_docs": vector_store.len(),
                 });
 
                 store.append_run(&RunRecord {

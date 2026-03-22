@@ -2,6 +2,7 @@ mod chat;
 mod experiment;
 mod feature;
 mod profile;
+mod rag;
 mod server;
 mod tools;
 

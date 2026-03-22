@@ -20,8 +20,12 @@
 //! ```
 
 use rig::agent::{Agent, PromptResponse};
+use rig::client::CompletionClient;
 use rig::completion::{Message, PromptError, Prompt};
 use rig::providers::openai;
+
+use bge_m3_onnx_rust::BgeM3Embedder;
+use crate::rag::{VectorStore, format_context};
 
 /// chat 결과 — 응답 텍스트 + 토큰 사용량
 #[derive(Debug, Clone)]
@@ -68,6 +72,44 @@ pub async fn chat_with_tools(
         .await?;
 
     Ok(to_chat_result(resp))
+}
+
+/// RAG 기반 chat — 벡터 검색 후 preamble에 합쳐서 응답
+///
+/// 1. BGE-M3로 질문을 임베딩
+/// 2. 벡터 스토어에서 top_k 유사 문서 검색
+/// 3. 검색 결과를 system_prompt에 합침 (<file> 태그 없이)
+/// 4. agent 빌드 → chat() 호출
+pub async fn chat_with_rag(
+    client: &openai::CompletionsClient,
+    system_prompt: &str,
+    prompt: &str,
+    history: &mut Vec<Message>,
+    embedder: &mut BgeM3Embedder,
+    store: &VectorStore,
+    top_k: usize,
+) -> Result<ChatResult, PromptError> {
+    // 벡터 검색
+    let results = store.query(prompt, embedder, top_k)
+        .map_err(|e| PromptError::CompletionError(
+            rig::completion::CompletionError::RequestError(e.to_string().into())
+        ))?;
+
+    // preamble에 검색 결과 합침
+    let full_system = if results.is_empty() {
+        system_prompt.to_string()
+    } else {
+        let context = format_context(&results);
+        tracing::info!("[rag] {}개 문서 검색됨 (최고 유사도: {:.3})",
+            results.len(), results[0].score);
+        format!("{}\n\n[참고 자료]\n{}", system_prompt, context)
+    };
+
+    let agent = client.agent("local-model")
+        .preamble(&full_system)
+        .build();
+
+    chat(&agent, prompt, history).await
 }
 
 /// PromptResponse → ChatResult 변환

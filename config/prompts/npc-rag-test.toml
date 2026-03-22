@@ -1,0 +1,55 @@
+# 프롬프트 세트: RAG 기반 NPC 대사 테스트
+# 벡터 검색으로 관련 지식을 찾아 system_prompt에 합쳐서 응답
+
+system_prompt = """당신은 무협 RPG의 NPC입니다.
+캐릭터의 성격과 배경에 맞게 대화하세요.
+[참고 자료]에 주어진 정보를 활용하되, 자연스럽게 대사에 녹여내세요."""
+
+max_tokens = 512
+repeat = 1
+
+[prompt_set]
+name = "npc-rag-test"
+description = "RAG 벡터 검색 기반 NPC 대사 품질 테스트"
+
+[[prompts]]
+id = "rag_kungfu"
+label = "무공 질문 (RAG)"
+context = """[캐릭터: 이모백]
+나이: 45세, 성격: 내성적/철학적, 무공: 무당파 검법 대성"""
+user = "이 대협, 무당검법이 어떤 무공인지 설명해 주시겠소?"
+
+[[prompts]]
+id = "rag_relationship"
+label = "관계 질문 (RAG)"
+context = """[캐릭터: 이모백]
+나이: 45세, 성격: 내성적/철학적, 무공: 무당파 검법 대성"""
+user = "대협, 옥교룡이라는 아이를 아시오? 어떤 사이시오?"
+
+[[prompts]]
+id = "rag_enemy"
+label = "적대 관계 (RAG)"
+context = """[캐릭터: 이모백]
+나이: 45세, 성격: 내성적/철학적, 무공: 무당파 검법 대성"""
+user = "벽안호라는 자가 위험하다 들었소. 그자에 대해 아는 것이 있소?"
+
+[[prompts]]
+id = "rag_inventory"
+label = "소지품 질문 (RAG)"
+context = """[캐릭터: 이모백]
+나이: 45세, 성격: 내성적/철학적, 무공: 무당파 검법 대성"""
+user = "대협, 지금 가지고 계신 검이 어떤 검이오?"
+
+[[prompts]]
+id = "rag_combined"
+label = "복합 질문 (RAG)"
+context = """[캐릭터: 이모백]
+나이: 45세, 성격: 내성적/철학적, 무공: 무당파 검법 대성"""
+user = "옥교룡이 비검술을 익히고 있다 하던데, 그 무공은 얼마나 위험하오? 그리고 그 아이와 대협은 어떤 사이시오?"
+
+[[prompts]]
+id = "rag_background"
+label = "배경 질문 (RAG)"
+context = """[캐릭터: 이모백]
+나이: 45세, 성격: 내성적/철학적, 무공: 무당파 검법 대성"""
+user = "대협은 왜 강호를 떠나려 하시오? 무슨 사연이 있소?"

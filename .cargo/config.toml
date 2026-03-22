@@ -1,0 +1,5 @@
+# CRT 불일치 해결: ort_sys(/MD) vs esaxx_rs(/MT)
+# CXXFLAGS만 설정 — esaxx-rs(C++)만 /MD로 강제
+# CFLAGS는 건드리지 않음 — aws-lc-sys(CMake) 깨짐 방지
+[env]
+CXXFLAGS = "/MD"

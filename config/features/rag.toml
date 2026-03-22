@@ -1,0 +1,15 @@
+# RAG 기능 — BGE-M3 ONNX 인프로세스 임베딩 + 벡터 검색
+# system_prompt에 검색 결과를 합쳐서 LLM에 전달
+
+[feature]
+name = "rag"
+description = "BGE-M3 벡터 검색 기반 NPC 대사 생성 (인프로세스 ONNX)"
+type = "rag"
+
+[rag]
+max_tokens = 512
+temperature = 0.6
+top_k = 3
+onnx_model = "../models/bge-m3/model_quantized.onnx"
+tokenizer = "../models/bge-m3/tokenizer.json"
+knowledge_path = "config/data/npc-knowledge.toml"
