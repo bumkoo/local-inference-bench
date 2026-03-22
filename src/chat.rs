@@ -1,0 +1,82 @@
+//! RIG 기능 확장 모듈 — 커스텀 chat
+//!
+//! RIG의 `.prompt()` + `.with_history()` + `.extended_details()` 를 조합하여
+//! &mut history 기반, usage 포함, 도구 호출 지원하는 통합 chat 함수 제공.
+//!
+//! ## 설계 원칙
+//! - `&mut Vec<Message>` 참조: clone 없음, RIG가 자동 push
+//! - RIG의 기존 Agent/Prompt 인터페이스와 호환
+//! - 나중에 수동 루프(모델 분리)로 확장 가능한 기반
+//!
+//! ## 사용법
+//! ```ignore
+//! use crate::chat::{chat, chat_with_tools, ChatResult};
+//!
+//! // 단일 턴 (도구 없음)
+//! let result = chat(&agent, "대협, 처음 뵙겠소.", &mut history).await?;
+//!
+//! // 도구 호출 가능
+//! let result = chat_with_tools(&agent, "무당검법이 뭐요?", &mut history, 5).await?;
+//! ```
+
+use rig::agent::{Agent, PromptResponse};
+use rig::completion::{Message, PromptError, Prompt};
+use rig::providers::openai;
+
+/// chat 결과 — 응답 텍스트 + 토큰 사용량
+#[derive(Debug, Clone)]
+pub struct ChatResult {
+    /// LLM의 최종 응답 텍스트
+    pub response: String,
+    /// 토큰 사용량
+    pub input_tokens: u64,
+    pub output_tokens: u64,
+    pub total_tokens: u64,
+    pub cached_input_tokens: u64,
+}
+
+/// 단일 턴 chat — 도구 없는 에이전트용
+///
+/// history에 user + assistant 메시지가 자동 push됨.
+pub async fn chat(
+    agent: &Agent<openai::CompletionModel>,
+    prompt: &str,
+    history: &mut Vec<Message>,
+) -> Result<ChatResult, PromptError> {
+    let resp = agent.prompt(prompt)
+        .with_history(history)
+        .extended_details()
+        .await?;
+
+    Ok(to_chat_result(resp))
+}
+
+/// 도구 호출 가능 chat — max_turns 지정
+///
+/// RIG의 자동 도구 호출 루프를 활용.
+/// history에 user + tool_call + tool_result + assistant 메시지가 자동 push됨.
+pub async fn chat_with_tools(
+    agent: &Agent<openai::CompletionModel>,
+    prompt: &str,
+    history: &mut Vec<Message>,
+    max_turns: usize,
+) -> Result<ChatResult, PromptError> {
+    let resp = agent.prompt(prompt)
+        .with_history(history)
+        .max_turns(max_turns)
+        .extended_details()
+        .await?;
+
+    Ok(to_chat_result(resp))
+}
+
+/// PromptResponse → ChatResult 변환
+fn to_chat_result(resp: PromptResponse) -> ChatResult {
+    ChatResult {
+        response: resp.output,
+        input_tokens: resp.total_usage.input_tokens,
+        output_tokens: resp.total_usage.output_tokens,
+        total_tokens: resp.total_usage.total_tokens,
+        cached_input_tokens: resp.total_usage.cached_input_tokens,
+    }
+}

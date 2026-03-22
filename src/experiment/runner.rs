@@ -1,10 +1,11 @@
 use chrono::Utc;
 use rig::client::CompletionClient;
-use rig::completion::{Message, Prompt};
+use rig::completion::Message;
 use rig::providers::openai;
 use std::time::Instant;
 use tracing::info;
 
+use crate::chat::{chat, chat_with_tools};
 use crate::feature::Feature;
 use crate::profile::ServerProfile;
 use crate::tools::{LookupKungFu, CheckRelationship, CheckInventory};
@@ -74,6 +75,7 @@ impl ExperimentRunner {
     }
 
     /// Feature: completion - 가장 단순한 프롬프트/응답
+    /// chat() 사용 — history는 프롬프트별 독립 (단일턴)
     async fn run_completion(
         &self,
         client: &openai::CompletionsClient,
@@ -89,14 +91,18 @@ impl ExperimentRunner {
 
                 let system = prompt.build_system_prompt(&self.prompt_set.system_prompt);
                 let agent = client.agent("local-model").preamble(&system).build();
+                let mut history: Vec<Message> = Vec::new();
 
                 let start = Instant::now();
-                let result = agent.prompt(&prompt.user).await;
-                let elapsed = start.elapsed();
-                let latency_ms = elapsed.as_millis() as u64;
+                let result = chat(&agent, &prompt.user, &mut history).await;
+                let latency_ms = start.elapsed().as_millis() as u64;
 
                 let (response, success) = match result {
-                    Ok(text) => (text, true),
+                    Ok(cr) => {
+                        let tps = calc_tps(cr.output_tokens as usize, latency_ms);
+                        log_result(latency_ms, cr.output_tokens as usize, tps, true);
+                        (cr.response, true)
+                    }
                     Err(e) => {
                         info!("  에러: {}", e);
                         (format!("[ERROR] {}", e), false)
@@ -105,7 +111,6 @@ impl ExperimentRunner {
 
                 let tokens = estimate_tokens(&response);
                 let tps = calc_tps(tokens, latency_ms);
-                log_result(latency_ms, tokens, tps, success);
 
                 store.append_run(&RunRecord {
                     run_id, prompt_id: prompt.id.clone(), prompt_label: prompt.label.clone(),
@@ -129,6 +134,7 @@ impl ExperimentRunner {
     }
 
     /// Feature: agent_tool - NPC 도구 호출 (무공 조회, 관계 확인, 소지품 확인)
+    /// chat.rs의 chat_with_tools() 사용 — usage 실측, history 자동 관리
     async fn run_agent_tool(
         &self,
         client: &openai::CompletionsClient,
@@ -155,35 +161,43 @@ impl ExperimentRunner {
                     .max_tokens(params.max_tokens as u64)
                     .build();
 
-                let start = Instant::now();
-                let result = agent.prompt(&prompt.user)
-                    .max_turns(max_turns)
-                    .await;
-                let elapsed = start.elapsed();
-                let latency_ms = elapsed.as_millis() as u64;
+                // 프롬프트별 독립 history (도구 호출 이력은 RIG가 자동 관리)
+                let mut history: Vec<Message> = Vec::new();
 
-                let (response, success, extra_info) = match result {
-                    Ok(text) => (text, true, None),
+                let start = Instant::now();
+                let result = chat_with_tools(&agent, &prompt.user, &mut history, max_turns).await;
+                let latency_ms = start.elapsed().as_millis() as u64;
+
+                let (response, success, extra) = match result {
+                    Ok(cr) => {
+                        let tps = calc_tps(cr.output_tokens as usize, latency_ms);
+                        log_result(latency_ms, cr.output_tokens as usize, tps, true);
+                        let extra = serde_json::json!({
+                            "max_turns": max_turns,
+                            "tools": ["lookup_kung_fu", "check_relationship", "check_inventory"],
+                            "usage": {
+                                "input_tokens": cr.input_tokens,
+                                "output_tokens": cr.output_tokens,
+                                "total_tokens": cr.total_tokens,
+                                "cached_input_tokens": cr.cached_input_tokens,
+                            },
+                            "history_len": history.len(),
+                        });
+                        (cr.response, true, extra)
+                    }
                     Err(e) => {
-                        // MaxTurnsError는 도구 호출이 max_turns를 초과한 경우
                         let err_str = format!("{}", e);
+                        info!("  에러: {}", e);
                         let extra = serde_json::json!({
                             "error_type": if err_str.contains("MaxTurns") { "max_turns_exceeded" } else { "other" },
                             "error": err_str,
                         });
-                        info!("  에러: {}", e);
-                        (format!("[ERROR] {}", e), false, Some(extra))
+                        (format!("[ERROR] {}", e), false, extra)
                     }
                 };
 
                 let tokens = estimate_tokens(&response);
                 let tps = calc_tps(tokens, latency_ms);
-                log_result(latency_ms, tokens, tps, success);
-
-                let extra = extra_info.unwrap_or_else(|| serde_json::json!({
-                    "max_turns": max_turns,
-                    "tools": ["lookup_kung_fu", "check_relationship", "check_inventory"],
-                }));
 
                 store.append_run(&RunRecord {
                     run_id, prompt_id: prompt.id.clone(), prompt_label: prompt.label.clone(),
@@ -197,11 +211,8 @@ impl ExperimentRunner {
         Ok(())
     }
 
-    /// Feature: multi_turn - RIG .with_history()를 활용한 멀티턴 대화
-    /// 이전 방식: system prompt에 대화 이력을 텍스트로 합쳐서 전송
-    /// 현재 방식: RIG가 messages 배열에 user/assistant를 교대로 누적
-    ///   → chat template이 역할별 특수 토큰을 정확히 적용
-    ///   → llama-server cache_reuse가 최대 효과 (이전 턴 전체가 접두사)
+    /// Feature: multi_turn - chat()을 활용한 멀티턴 대화
+    /// history에 user/assistant 자동 누적, usage 실측
     async fn run_multi_turn(
         &self,
         client: &openai::CompletionsClient,
@@ -216,38 +227,38 @@ impl ExperimentRunner {
         for repeat_idx in 0..self.prompt_set.repeat {
             info!("멀티턴 세션 {} (최대 {}턴)", repeat_idx + 1, max_turns);
 
-            // 첫 프롬프트의 context로 에이전트 생성 (동일 캐릭터와 연속 대화)
             let system = prompts[0].build_system_prompt(&self.prompt_set.system_prompt);
             let agent = client.agent("local-model").preamble(&system).build();
 
-            // RIG가 관리하는 대화 이력 (user/assistant 메시지 자동 누적)
             let mut history: Vec<Message> = Vec::new();
-            // 증빙용 간소화 대화 로그
             let mut conversation_log: Vec<serde_json::Value> = Vec::new();
 
             for (turn, prompt) in prompts.iter().take(max_turns).enumerate() {
                 let run_id = (repeat_idx as usize * max_turns) + turn + 1;
 
                 let start = Instant::now();
-                let result = agent.prompt(&prompt.user)
-                    .with_history(&mut history)
-                    .await;
-                let elapsed = start.elapsed();
-                let latency_ms = elapsed.as_millis() as u64;
+                let result = chat(&agent, &prompt.user, &mut history).await;
+                let latency_ms = start.elapsed().as_millis() as u64;
 
-                let (response, success) = match result {
-                    Ok(text) => (text, true),
+                let (response, success, usage_extra) = match result {
+                    Ok(cr) => {
+                        let tps = calc_tps(cr.output_tokens as usize, latency_ms);
+                        info!("  턴 {}: {}ms, {}tok(in:{}/out:{}), {:.1}tok/s",
+                            turn + 1, latency_ms, cr.total_tokens, cr.input_tokens, cr.output_tokens, tps);
+                        let usage = serde_json::json!({
+                            "input_tokens": cr.input_tokens,
+                            "output_tokens": cr.output_tokens,
+                            "total_tokens": cr.total_tokens,
+                            "cached_input_tokens": cr.cached_input_tokens,
+                        });
+                        (cr.response, true, usage)
+                    }
                     Err(e) => {
                         info!("  턴 {} 에러: {}", turn + 1, e);
-                        (format!("[ERROR] {}", e), false)
+                        (format!("[ERROR] {}", e), false, serde_json::json!(null))
                     }
                 };
 
-                let tokens = estimate_tokens(&response);
-                let tps = calc_tps(tokens, latency_ms);
-                info!("  턴 {}: {}ms, ~{}tok, {:.1}tok/s", turn + 1, latency_ms, tokens, tps);
-
-                // 증빙용 대화 로그 누적
                 conversation_log.push(serde_json::json!({
                     "role": "user", "content": prompt.user
                 }));
@@ -255,9 +266,13 @@ impl ExperimentRunner {
                     "role": "assistant", "content": response
                 }));
 
+                let tokens = estimate_tokens(&response);
+                let tps = calc_tps(tokens, latency_ms);
+
                 let extra = serde_json::json!({
                     "turn": turn + 1,
                     "total_turns": max_turns,
+                    "usage": usage_extra,
                     "conversation": conversation_log.clone(),
                 });
 

@@ -1,3 +1,4 @@
+mod chat;
 mod experiment;
 mod feature;
 mod profile;
