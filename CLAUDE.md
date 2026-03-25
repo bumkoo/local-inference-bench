@@ -23,6 +23,7 @@ Documentation and comments are in **Korean**. Commit messages use Korean.
 - **Errors**: anyhow + thiserror
 - **Logging**: tracing + tracing-subscriber (env-filter)
 - **Serialization**: serde + serde_json + toml
+- **Time/ID**: chrono (timestamps) + uuid v4 (experiment IDs)
 
 ## Repository Structure
 
@@ -47,11 +48,23 @@ src/
 
 config/
 ├── profiles/*.toml          # Server configs (gemma-4b, gemma-12b, gemma-12b-spec, qwen3-8b)
-├── features/*.toml          # Feature definitions (basic-completion, agent-preamble, agent-tool, multi-turn, rag-*)
+├── features/*.toml          # Feature definitions (8 files: basic-completion, agent-preamble, agent-tool, multi-turn, rag, rag-dense, rag-hybrid, rag-colbert)
 ├── prompts/*.toml           # Prompt sets (npc-dialogue, npc-tool-test, npc-rag-test)
 └── data/npc-knowledge.toml  # RAG knowledge base (11 NPC documents)
 
 docs/                        # Technical documentation (Korean)
+├── build-issues.md          # CRT mismatch / ONNX Runtime issues
+├── embedding-search.md      # BGE-M3 vector search strategies
+├── logging.md               # Tracing/logging configuration
+├── models.md                # GGUF model download links
+├── profile-guide.md         # Server profile creation guide
+├── rig-notes.md             # RIG framework API notes
+├── server-options.md        # llama-server CLI options
+└── test-coverage-analysis.md # Testing coverage analysis
+
+examples/
+└── score_dist.rs            # Score distribution example
+
 tools/
 ├── view-runs.py             # Python console viewer for experiment results
 └── jsonl-viewer.html        # Web-based JSONL viewer
