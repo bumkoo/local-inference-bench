@@ -15,12 +15,12 @@ Documentation and comments are in **Korean**. Commit messages use Korean.
 ## Tech Stack
 
 - **Language**: Rust (edition 2024, nightly-2026-03-20)
-- **LLM Client**: rig-core 0.31 (agents, tool calling, multi-turn)
+- **LLM Client**: rig-core 0.31 with `derive` feature (agents, tool calling, multi-turn)
 - **Server**: lmcpp 0.1 (llama.cpp server management)
 - **Async**: tokio
 - **Embeddings**: bge-m3-onnx-rust (local path dependency `../bge-m3-onnx-rust`)
 - **CLI**: clap 4 (derive)
-- **Errors**: anyhow + thiserror
+- **Errors**: anyhow + thiserror 2.0
 - **Logging**: tracing + tracing-subscriber (env-filter)
 - **Serialization**: serde + serde_json + toml
 - **Time/ID**: chrono (timestamps) + uuid v4 (experiment IDs)
@@ -33,8 +33,8 @@ src/
 ├── profile.rs               # ServerProfile — TOML loading, validation
 ├── feature.rs               # Feature — dispatch by type (completion/agent/agent_tool/multi_turn/rag)
 ├── server.rs                # launch_server() — builds ServerArgs from profile, wraps lmcpp
-├── chat.rs                  # Unified chat wrappers: chat(), chat_with_tools(), chat_with_rag()
-├── rag.rs                   # VectorStore, SearchStrategy (DenseOnly/Hybrid/ColBERTRerank), knowledge loader
+├── chat.rs                  # Unified chat wrappers: chat(), chat_with_tools(), chat_with_rag() → ChatResult
+├── rag.rs                   # VectorStore (Dense+Sparse만 저장), SearchStrategy (DenseOnly/Hybrid/ColBERTRerank), knowledge loader
 ├── experiment/
 │   ├── mod.rs
 │   ├── runner.rs            # ExperimentRunner — orchestrates server + feature execution per prompt
@@ -100,9 +100,9 @@ python3 tools/view-runs.py [path] [limit]
 ```
 TOML configs → CLI (clap) → ExperimentRunner
   → launch_server (lmcpp → llama-server)
-  → openai::Client (rig-core, pointed at localhost)
+  → openai::CompletionsClient (via Client::builder().build()?.completions_api())
   → match feature_type:
-      completion/agent → chat()
+      completion/agent → chat()  (run_agent는 run_completion에 위임)
       agent_tool       → chat_with_tools()
       multi_turn       → chat() with shared history
       rag              → chat_with_rag() (BGE-M3 embed → VectorStore search → preamble merge)
@@ -117,9 +117,11 @@ TOML configs → CLI (clap) → ExperimentRunner
 
 3. **`jinja = true` for tool calling** — llama-server needs the `--jinja` flag to parse tool schemas in chat templates. Set in profile TOML under `[inference]`.
 
-4. **Token estimation** — Uses CJK character count + English word count × 1.3 factor (no tokenizer access at result collection time).
+4. **Token estimation** — `tokens_generated` in RunRecord uses CJK character count + English word count × 1.3 (no tokenizer dependency). 실제 API usage (`output_tokens`, `input_tokens` 등)는 ChatResult에서 받아 `extra` JSON 필드에 별도 저장.
 
-5. **History by reference** — `chat()` takes `&mut Vec<Message>`. RIG auto-pushes user/assistant messages. No cloning.
+5. **History by reference** — `chat()`, `chat_with_tools()`, `chat_with_rag()` 모두 `&mut Vec<Message>` 참조. RIG가 user/assistant 메시지를 자동 push. No cloning.
+
+6. **ColBERT 벡터 미저장** — `RagDocument`는 dense, sparse만 저장. ColBERT 리랭킹 시 후보 문서를 `embedder.encode()`로 재인코딩하여 메모리 절약 (계산 비용 트레이드오프).
 
 ## Configuration System
 
