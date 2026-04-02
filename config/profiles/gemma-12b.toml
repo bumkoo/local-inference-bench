@@ -1,29 +1,47 @@
-# 서버 프로파일: Gemma 12B
+# 서버 프로파일: Gemma 3 12B (RTX 2080 8GB 최적화)
 [profile]
 name = "gemma-12b"
-description = "Gemma 12B 메인 멀티 캐쉬"
+description = "Gemma 12B RTX 2080 8GB / 3개 동시 처리 및 캐시 최적화 설정"
 
 [server]
 host = "127.0.0.1"
 port = 8081
+# [parallel] 동시 요청 처리 개수
+# 이유: 사용자 요청에 따라 3개 슬롯 확보. 슬롯당 약 2,000 토큰 할당 가능.
 parallel = 3
 no_webui = false
 
 [model]
+# Q3_K_M 양자화 모델 (약 5.7GB): 8GB VRAM 환경에서 캐시 공간 확보를 위한 최선책
 main = "..\\models\\gemma-3-12b-it-Q3_K_M.gguf"
 
 [gpu]
-layers = 33
+# [layers] GPU로 보낼 레이어 개수 (Gemma 3 12B 전체 레이어는 42개)
+# 이유: 8GB VRAM에 모델(5.7GB)과 캐시(1GB+)를 모두 올리기 위해 '42'로 설정하여 전체 GPU 가속.
+layers = 42
+# [flash_attn] Flash Attention 가속 활성화
+# 이유: Gemma 3의 Sliding Window Attention(SWA) 구조에서 캐시 재사용과 메모리 효율을 위해 필수.
 flash_attn = true
-
+# [ubatch_size] 물리적 마이크로 배치 사이즈 (한 번에 GPU 코어가 계산하는 양)
+# 이유: 512는 RTX 2080의 CUDA 코어를 꽉 채우면서도 VRAM 급증(Peak)을 막는 안전한 수치.
+ubatch_size = 512
 
 [cache]
-type_k = "q8_0"
-type_v = "q8_0"
+# [type_k/v] KV 캐시 양자화 설정 (중요!)
+# 이유: q8_0보다 q4_0가 VRAM을 절반만 사용함. 8GB 한계에서 3개 병렬 처리를 가능하게 하는 핵심.
+type_k = "q4_0"
+type_v = "q4_0"
 
 [context]
+# [ctx_size] 전체 컨텍스트 크기 (슬롯 3개의 합계)
+# 이유: 6144 / 3 = 각 사용자당 2,048 토큰 보장. 8GB VRAM 내에서 가장 안정적인 크기.
 ctx_size = 6144
+# [batch_size] 논리적 배치 사이즈 (한 번에 입력받는 전체 프롬프트 양)
+# 이유: 1024로 크게 잡아 긴 질문 입력 시 '프롬프트 읽는 속도'를 극대화함.
 batch_size = 1024
+# [cont_batching] 연속 배치 활성화
+# 이유: 3명이 동시에 쓸 때, 한 명의 답변이 안 끝났어도 다른 사람의 연산을 끼워 넣어 응답 지연 최소화.
+cont_batching = true
 
 [timeouts]
 load_secs = 180
