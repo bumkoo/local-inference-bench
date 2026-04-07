@@ -2,9 +2,9 @@
 
 ## Project Overview
 
-Rust CLI tool for benchmarking local LLMs (via llama.cpp) across a **3-axis framework**:
+Rust CLI tool for benchmarking local LLMs (via llama-server) across a **3-axis framework**:
 
-- **Server Profile** — llama-server configuration (model, GPU, context, speculation)
+- **Server Profile** — llama-server configuration (model, GPU, context, speculation, toolchain)
 - **RIG Feature** — LLM API pattern (completion, agent, tool calling, multi-turn, RAG)
 - **Prompt Set** — Test scenarios (NPC dialogue, tool tests, RAG queries)
 
@@ -16,9 +16,9 @@ Documentation and comments are in **Korean**. Commit messages use Korean.
 
 - **Language**: Rust (edition 2024, nightly-2026-03-20)
 - **LLM Client**: rig-core 0.31 with `derive` feature (agents, tool calling, multi-turn)
-- **Server**: lmcpp 0.1 (llama.cpp server management)
-- **Async**: tokio
-- **Embeddings**: bge-m3-onnx-rust (local path dependency `../bge-m3-onnx-rust`)
+- **Server**: llama-server (managed via `lmcpp-toolchain-cli` structure)
+- **Async**: tokio 1.x
+- **Embeddings**: bge-m3-onnx-rust (git dependency)
 - **CLI**: clap 4 (derive)
 - **Errors**: anyhow + thiserror 2.0
 - **Logging**: tracing + tracing-subscriber (env-filter)
@@ -30,14 +30,14 @@ Documentation and comments are in **Korean**. Commit messages use Korean.
 ```
 src/
 ├── main.rs                  # CLI entry (serve / run / list subcommands)
-├── profile.rs               # ServerProfile — TOML loading, validation
+├── profile.rs               # ServerProfile — TOML loading, validation (12 sections)
 ├── feature.rs               # Feature — dispatch by type (completion/agent/agent_tool/multi_turn/rag)
-├── server.rs                # launch_server() — builds ServerArgs from profile, wraps lmcpp
+├── server.rs                # launch_server() — builds CLI args, resolves llama-server binary
 ├── chat.rs                  # Unified chat wrappers: chat(), chat_with_tools(), chat_with_rag() → ChatResult
-├── rag.rs                   # VectorStore (Dense+Sparse만 저장), SearchStrategy (DenseOnly/Hybrid/ColBERTRerank), knowledge loader
+├── rag.rs                   # VectorStore (Dense+Sparse), SearchStrategy (DenseOnly/Hybrid/ColBERT), knowledge loader
 ├── experiment/
 │   ├── mod.rs
-│   ├── runner.rs            # ExperimentRunner — orchestrates server + feature execution per prompt
+│   ├── runner.rs            # ExperimentRunner — orchestrates server + feature execution
 │   ├── prompt_set.rs        # PromptSet — loads prompt TOML with repeat count
 │   └── store.rs             # ExperimentStore — result persistence (experiment.json + runs.jsonl)
 └── tools/
@@ -47,8 +47,8 @@ src/
     └── inventory.rs         # check_inventory — NPC item lookup
 
 config/
-├── profiles/*.toml          # Server configs (gemma-4b, gemma-12b, gemma-12b-spec, qwen3-8b)
-├── features/*.toml          # Feature definitions (8 files: basic-completion, agent-preamble, agent-tool, multi-turn, rag, rag-dense, rag-hybrid, rag-colbert)
+├── profiles/*.toml          # Server configs (gemma-4b, gemma3-4b, gemma3-12b, gemma4-e4b, etc.)
+├── features/*.toml          # Feature definitions (basic-completion, agent-tool, rag-hybrid, etc.)
 ├── prompts/*.toml           # Prompt sets (npc-dialogue, npc-tool-test, npc-rag-test)
 └── data/npc-knowledge.toml  # RAG knowledge base (11 NPC documents)
 
@@ -99,29 +99,29 @@ python3 tools/view-runs.py [path] [limit]
 
 ```
 TOML configs → CLI (clap) → ExperimentRunner
-  → launch_server (lmcpp → llama-server)
-  → openai::CompletionsClient (via Client::builder().build()?.completions_api())
+  → launch_server (resolve binary → spawn llama-server)
+  → openai::CompletionsClient (via .completions_api())
   → match feature_type:
-      completion/agent → chat()  (run_agent는 run_completion에 위임)
-      agent_tool       → chat_with_tools()
+      completion/agent → chat()
+      agent_tool       → chat_with_tools() (uses CheckInventory, etc.)
       multi_turn       → chat() with shared history
-      rag              → chat_with_rag() (BGE-M3 embed → VectorStore search → preamble merge)
+      rag              → chat_with_rag() (BGE-M3 encode → VectorStore search → preamble merge)
   → ExperimentStore (experiment.json metadata + runs.jsonl per-prompt logs)
 ```
 
 ## Critical Design Decisions
 
-1. **`.completions_api()` is mandatory** — llama-server only supports `/v1/chat/completions`, not `/v1/responses`. Always use `client.completions_api()` when building the RIG client.
+1. **`.completions_api()` is mandatory** — llama-server only supports `/v1/chat/completions`. Always use `client.completions_api()` when building the RIG client.
 
 2. **Preamble over context for RAG** — Use `.preamble(system + search_results)` instead of `.context()`. The `.context()` method wraps content in `<file>` XML tags that confuse local models.
 
 3. **`jinja = true` for tool calling** — llama-server needs the `--jinja` flag to parse tool schemas in chat templates. Set in profile TOML under `[inference]`.
 
-4. **Token estimation** — `tokens_generated` in RunRecord uses CJK character count + English word count × 1.3 (no tokenizer dependency). 실제 API usage (`output_tokens`, `input_tokens` 등)는 ChatResult에서 받아 `extra` JSON 필드에 별도 저장.
+4. **Token estimation** — `tokens_generated` in RunRecord uses CJK character count + English word count × 1.3. 실제 API usage (`output_tokens`, `input_tokens`)는 ChatResult에서 받아 `extra` 필드에 저장.
 
-5. **History by reference** — `chat()`, `chat_with_tools()`, `chat_with_rag()` 모두 `&mut Vec<Message>` 참조. RIG가 user/assistant 메시지를 자동 push. No cloning.
+5. **History by reference** — `chat()`, `chat_with_tools()`, `chat_with_rag()` 모두 `&mut Vec<Message>` 참조. RIG가 user/assistant 메시지를 자동 push.
 
-6. **ColBERT 벡터 미저장** — `RagDocument`는 dense, sparse만 저장. ColBERT 리랭킹 시 후보 문서를 `embedder.encode()`로 재인코딩하여 메모리 절약 (계산 비용 트레이드오프).
+6. **Memory-Efficient RAG** — `RagDocument`는 dense, sparse만 영구 저장. ColBERT 리랭킹 시에는 후보 문서를 실시간으로 `embedder.encode()`하여 메모리 절약 (계산 비용과 트레이드오프).
 
 ## Configuration System
 
@@ -129,44 +129,34 @@ TOML configs → CLI (clap) → ExperimentRunner
 12 sections: `[profile]`, `[server]`, `[model]`, `[gpu]`, `[cpu]`, `[context]`, `[cache]`, `[speculation]`, `[inference]`, `[debug]`, `[timeouts]`, `[toolchain]`.
 
 ### Features (`config/features/*.toml`)
-Dispatch key: `feature.type` → one of: `completion`, `agent`, `agent_tool`, `multi_turn`, `rag`. Only the matching params section is populated.
+Dispatch key: `feature.type` → `completion`, `agent`, `agent_tool`, `multi_turn`, `rag`.
 
 ### Prompt Sets (`config/prompts/*.toml`)
-Contains `system_prompt`, `max_tokens`, `repeat` count, and a `[[prompts]]` array with `id`, `label`, `context`, `user` fields.
+Contains `system_prompt`, `repeat` count, and `[[prompts]]` (id, label, user).
 
 ## Adding New Components
 
-**New profile**: Create `config/profiles/<name>.toml` with required sections. Refer to `docs/profile-guide.md`.
+**New profile**: Create `config/profiles/<name>.toml`. Sections are optional (defaults used) except `[profile]` and `[model]`.
 
-**New feature**: Create `config/features/<name>.toml` with `[feature]` meta (including `type`) and matching params section. If adding a new feature type, add the variant in `feature.rs` and handler in `experiment/runner.rs`.
+**New feature**: Create `config/features/<name>.toml`. Ensure `type` matches one of the 5 variants.
 
-**New prompt set**: Create `config/prompts/<name>.toml` with `[prompt_set]` meta, `system_prompt`, `repeat`, and `[[prompts]]` entries.
-
-**New tool**: Add a Rust file in `src/tools/`, implement the `rig::tool::Tool` trait, re-export in `src/tools/mod.rs`, and register it in the agent builder in `experiment/runner.rs`.
+**New tool**: Implement `rig::tool::Tool` in `src/tools/`, re-export in `mod.rs`, and register in `ExperimentRunner::run_agent_tool`.
 
 ## Code Conventions
 
-- **Error handling**: `anyhow::Result<T>` for application errors, `thiserror` for custom error types in tools
-- **Logging**: `tracing::info!()` with structured messages; control via `RUST_LOG` env var (e.g., `RUST_LOG="local_inference_bench=info,rig::completions=trace"`)
-- **Config serialization**: TOML for input configs, JSON for experiment metadata, JSONL for per-run logs
-- **Async**: All experiment execution is async via tokio
-- **Naming**: Rust snake_case; TOML keys use snake_case with hyphens in filenames
+- **Error handling**: `anyhow::Result<T>` for app logic, `thiserror` for custom errors.
+- **Logging**: `tracing::info!()` for major events. Control via `RUST_LOG`.
+- **Async**: All core execution is async via tokio.
+- **Naming**: Rust snake_case; TOML keys use snake_case.
 
 ## Build Notes
 
-- **Nightly Rust required**: `nightly-2026-03-20` (see `rust-toolchain.toml`)
-- **CRT mismatch workaround**: `.cargo/config.toml` sets `CXXFLAGS = "/MD"` for ONNX Runtime compatibility
-- **Local path dependency**: `bge-m3-onnx-rust` is at `../bge-m3-onnx-rust` (sibling directory)
-- **Model files**: GGUF models go in `models/` (gitignored). See `docs/models.md` for download links
-- **Known build issues**: Documented in `docs/build-issues.md`
+- **Stable Rust supported**: Rust edition 2024 is now stable.
+- **CRT mismatch workaround**: `.cargo/config.toml` sets `CXXFLAGS = "/MD"` for ONNX Runtime compatibility.
+- **Dependency**: `bge-m3-onnx-rust` is a git dependency.
+- **llama-server**: Binary is resolved via `%APPDATA%/llama_cpp_toolchain` or `binary_path` in profile.
+
 
 ## Testing
 
-No automated test suite or CI/CD pipeline. Testing is manual via `cargo run -- run` experiments. Results are inspected with `tools/view-runs.py` or `tools/jsonl-viewer.html`.
-
-## Experiment Output
-
-Each run produces a directory at `data/experiments/{timestamp}_{profile}_{feature}_{promptset}/`:
-- `experiment.json` — Full config snapshots + summary stats (success rate, avg latency, avg tokens/sec)
-- `runs.jsonl` — One JSON object per prompt execution (latency, tokens, full prompt/response, extra metadata)
-- `server_filtered.log` — llama-server logs with DEBUG lines removed
+Manual via `cargo run -- run`. Results inspected with `tools/view-runs.py` or `tools/jsonl-viewer.html`.
