@@ -5,8 +5,8 @@ edition = "2024"
 description = "Local LLM experimentation bench: Server Profile × RIG Feature × Prompt Set"
 
 [dependencies]
-# 서버 관리
-lmcpp = "0.1"
+# 서버 health check (blocking HTTP)
+ureq = "2"
 
 # LLM 클라이언트 프레임워크
 rig-core = { version = "0.31", features = ["derive"] }

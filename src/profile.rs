@@ -162,17 +162,26 @@ impl Default for TimeoutsConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolchainConfig {
-    #[serde(default = "default_build_mode")]
-    pub build_mode: String,
+    /// llama.cpp 릴리즈 태그 (예: "b8637", "b8685")
     #[serde(default)]
-    pub curl_enabled: bool,
+    pub repo_tag: Option<String>,
+    /// llama-server 바이너리 경로 직접 지정 (repo_tag 대신 사용)
+    #[serde(default)]
+    pub binary_path: Option<String>,
+    // 이전 lmcpp 호환용 (무시됨)
+    #[serde(default)]
+    pub build_mode: Option<String>,
+    #[serde(default)]
+    pub curl_enabled: Option<bool>,
 }
 
 impl Default for ToolchainConfig {
     fn default() -> Self {
         Self {
-            build_mode: "install_only".to_string(),
-            curl_enabled: false,
+            repo_tag: None,
+            binary_path: None,
+            build_mode: None,
+            curl_enabled: None,
         }
     }
 }
@@ -182,7 +191,7 @@ impl Default for ToolchainConfig {
 fn default_host() -> String { "127.0.0.1".to_string() }
 fn default_port() -> u16 { 8081 }
 fn default_load_secs() -> u64 { 120 }
-fn default_build_mode() -> String { "install_only".to_string() }
+
 
 // ── impl ServerProfile ────────────────────────────────
 

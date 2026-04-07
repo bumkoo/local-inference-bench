@@ -29,5 +29,4 @@ load_secs = 180
 download_secs = 0
 
 [toolchain]
-build_mode = "install_only"
-curl_enabled = false
+repo_tag = "b8685"

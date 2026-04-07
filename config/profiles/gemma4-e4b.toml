@@ -1,0 +1,36 @@
+# 서버 프로파일: Gemma 4 E4B
+[profile]
+name = "gemma4-e4b"
+description = "Gemma 4 E4B GPU 전체 오프로드"
+
+[server]
+host = "127.0.0.1"
+port = 8081
+parallel = 4
+no_webui = false
+
+[debug]
+verbose_prompt = true
+log_file = "data/experiments/server.log"
+verbosity = 0
+
+[model]
+main = "C:\\Users\\bumko\\projects\\models\\gemma-4-E4B-it-Q4_K_M.gguf"
+
+[gpu]
+layers = 99
+flash_attn = true
+
+[context]
+ctx_size = 8192
+batch_size = 2048
+
+[inference]
+jinja = true
+
+[timeouts]
+load_secs = 180
+download_secs = 0
+
+[toolchain]
+repo_tag = "b8637"

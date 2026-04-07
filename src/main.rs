@@ -85,7 +85,7 @@ async fn main() -> anyhow::Result<()> {
 
             // 실험 실행
             let runner = experiment::ExperimentRunner::new(prof, feat, ps)
-                .with_server_log(handle.log_file);
+                .with_server_log(handle.log_file.clone());
             let store = runner.run().await?;
 
             info!("결과 저장: {}", store.dir.display());
