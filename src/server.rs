@@ -115,16 +115,19 @@ fn build_cli_args(
     }
     push_opt_str(&mut a, "--device", &profile.gpu.device);
     push_opt(&mut a, "--main-gpu", &profile.gpu.main_gpu);
+    push_opt_str(&mut a, "--split-mode", &profile.gpu.split_mode);
 
     // [cpu]
     push_opt(&mut a, "--threads", &profile.cpu.threads);
     push_opt(&mut a, "--threads-batch", &profile.cpu.threads_batch);
+    push_opt(&mut a, "--threads-http", &profile.cpu.threads_http);
     if profile.cpu.mlock {
         a.push("--mlock".into());
     }
     if profile.cpu.no_mmap {
         a.push("--no-mmap".into());
     }
+    push_opt_str(&mut a, "--numa", &profile.cpu.numa);
 
     // [context]
     push_opt(&mut a, "--ctx-size", &profile.context.ctx_size);
@@ -137,6 +140,9 @@ fn build_cli_args(
     push_opt(&mut a, "--cache-reuse", &profile.cache.cache_reuse);
     if profile.cache.no_kv_offload {
         a.push("--no-kv-offload".into());
+    }
+    if let Some(v) = profile.cache.defrag_thold {
+        push(&mut a, "--defrag-thold", &v.to_string());
     }
 
     // [speculation]
@@ -159,6 +165,11 @@ fn build_cli_args(
         "--reasoning-format",
         &profile.inference.reasoning_format,
     );
+    push_opt_str(
+        &mut a,
+        "--reasoning-budget",
+        &profile.inference.reasoning_budget,
+    );
     if profile.inference.jinja {
         a.push("--jinja".into());
     }
@@ -173,6 +184,12 @@ fn build_cli_args(
         a.push("--verbose".into());
     }
     push_opt(&mut a, "-lv", &profile.debug.verbosity);
+    if profile.debug.slots_endpoint {
+        a.push("--slots".into());
+    }
+    if profile.debug.metrics_endpoint {
+        a.push("--metrics".into());
+    }
 
     // 로그 파일
     if let Some(lf) = log_file {
