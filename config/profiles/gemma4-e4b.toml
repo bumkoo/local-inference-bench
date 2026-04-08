@@ -22,8 +22,12 @@ layers = 99
 flash_attn = true
 
 [context]
-ctx_size = 8192
+ctx_size = 16384
 batch_size = 2048
+
+[cache]
+type_k = "q4_0"
+type_v = "q4_0"
 
 [inference]
 jinja = true

@@ -311,23 +311,47 @@
 
 현재 `config/profiles/*.toml`에서 사용 중인 필드:
 
-| TOML 필드 | lmcpp ServerArgs | 상태 |
+| TOML 섹션.필드 | CLI 플래그 | 상태 |
 |---|---|---|
-| `server.host` | `host` | 사용 중 |
-| `server.port` | `port` | 사용 중 |
-| `server.ctx_size` | `ctx_size` | 사용 중 |
-| `server.batch_size` | `batch_size` | 사용 중 |
-| `server.parallel` | `parallel` | 사용 중 |
-| `server.no_webui` | `no_webui` | 사용 중 |
-| `model.main` | `model` | 사용 중 |
-| `cache.type_k` | `cache_type_k` | 사용 중 |
-| `cache.type_v` | `cache_type_v` | 사용 중 |
-| `speculation.draft` | `model_draft` | 사용 중 |
-| `speculation.draft_max` | `draft_max` | 사용 중 |
+| `server.host` | `--host` | 사용 중 |
+| `server.port` | `--port` | 사용 중 |
+| `server.parallel` | `--parallel` | 사용 중 |
+| `server.no_webui` | `--no-webui` | 사용 중 |
+| `server.timeout` | `--timeout` | 사용 중 |
+| `model.main` | `--model` | 사용 중 |
+| `gpu.layers` | `--gpu-layers` | 사용 중 |
+| `gpu.flash_attn` | `--flash-attn` | 사용 중 |
+| `gpu.device` | `--device` | 사용 중 |
+| `gpu.main_gpu` | `--main-gpu` | 사용 중 |
+| `gpu.split_mode` | `--split-mode` | 사용 중 |
+| `cpu.threads` | `--threads` | 사용 중 |
+| `cpu.threads_batch` | `--threads-batch` | 사용 중 |
+| `cpu.threads_http` | `--threads-http` | 사용 중 |
+| `cpu.mlock` | `--mlock` | 사용 중 |
+| `cpu.no_mmap` | `--no-mmap` | 사용 중 |
+| `cpu.numa` | `--numa` | 사용 중 |
+| `context.ctx_size` | `--ctx-size` | 사용 중 |
+| `context.batch_size` | `--batch-size` | 사용 중 |
+| `context.ubatch_size` | `--ubatch-size` | 사용 중 |
+| `cache.type_k` | `--cache-type-k` | 사용 중 |
+| `cache.type_v` | `--cache-type-v` | 사용 중 |
+| `cache.cache_reuse` | `--cache-reuse` | 사용 중 |
+| `cache.no_kv_offload` | `--no-kv-offload` | 사용 중 |
+| `cache.defrag_thold` | `--defrag-thold` | 사용 중 |
+| `speculation.*` | `--model-draft` 등 | 사용 중 |
+| `inference.reasoning_format` | `--reasoning-format` | 사용 중 |
+| `inference.reasoning_budget` | `--reasoning-budget` | 사용 중 |
+| `inference.jinja` | `--jinja` | 사용 중 |
+| `inference.chat_template` | `--chat-template` | 사용 중 |
+| `inference.special_tokens` | `--special-tokens` | 사용 중 |
+| `debug.verbose` | `--verbose` | 사용 중 |
+| `debug.verbosity` | `-lv` | 사용 중 |
+| `debug.log_file` | `--log-file` | 사용 중 |
+| `debug.slots_endpoint` | `--slots` | 사용 중 |
+| `debug.metrics_endpoint` | `--metrics` | 사용 중 |
 
-확장 우선순위 (벤치마크 영향도 순):
-1. `gpu_layers` — GPU 오프로드 레이어 수
-2. `flash_attn` — Flash Attention 활성화
-3. `threads` / `threads_batch` — CPU 스레드
-4. `reasoning_format` — Qwen3 thinking 모드
-5. `cache_reuse` — 프롬프트 캐시 재사용
+미구현 (향후 확장 후보):
+1. `rope_freq_base` / `rope_freq_scale` / `rope_scaling` — RoPE 컨텍스트 확장
+2. `lora` — LoRA 어댑터
+3. `mmproj` — 멀티모달 프로젝터
+4. `control_vector` — 제어 벡터

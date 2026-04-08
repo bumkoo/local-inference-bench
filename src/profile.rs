@@ -76,6 +76,7 @@ pub struct GpuConfig {
 pub struct CpuConfig {
     pub threads: Option<u64>,
     pub threads_batch: Option<u64>,
+    pub threads_http: Option<u64>,
     #[serde(default)]
     pub mlock: bool,
     #[serde(default)]
@@ -101,6 +102,7 @@ pub struct CacheConfig {
     pub cache_reuse: Option<u64>,
     #[serde(default)]
     pub no_kv_offload: bool,
+    pub defrag_thold: Option<f32>,
 }
 
 // ── [speculation] ──────────────────────────────────────
@@ -120,6 +122,7 @@ pub struct SpeculationConfig {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct InferenceConfig {
     pub reasoning_format: Option<String>,
+    pub reasoning_budget: Option<String>,
     #[serde(default)]
     pub jinja: bool,
     pub chat_template: Option<String>,
@@ -140,6 +143,10 @@ pub struct DebugConfig {
     /// 0=콘솔 I만(가장 깔끔), 미설정=기본, 1+=점점 상세
     /// 주의: --log-file은 -lv와 무관하게 항상 전 레벨 기록
     pub verbosity: Option<u8>,
+    #[serde(default)]
+    pub slots_endpoint: bool,
+    #[serde(default)]
+    pub metrics_endpoint: bool,
 }
 
 // ── [timeouts] ─────────────────────────────────────────
