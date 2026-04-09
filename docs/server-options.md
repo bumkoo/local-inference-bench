@@ -242,7 +242,7 @@
 - **사용 예시**: Gemma 4 thinking 모드 제어
   - 활성화: `chat_template_kwargs = '{"enable_thinking":true}'`
   - 비활성화: `chat_template_kwargs = '{"enable_thinking":false}'`
-- **참고**: llama-server 범용 옵션. 모델별 Jinja2 템플릿이 지원하는 kwargs를 전달. `jinja = true`와 함께 사용.
+- **참고**: llama-server 범용 옵션. 모델별 Jinja2 템플릿이 지원하는 kwargs를 전달. `jinja = true`와 함께 사용
 
 ### special_tokens
 - **타입**: `bool`

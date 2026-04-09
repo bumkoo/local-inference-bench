@@ -141,8 +141,7 @@ pub struct DebugConfig {
     pub verbose: bool,
     pub log_file: Option<String>,
     /// llama-server 콘솔 로그 레벨 (-lv N)
-    /// 0=콘솔 I만(가장 깔끔), 미설정=기본, 1+=점점 상세
-    /// 주의: --log-file은 -lv와 무관하게 항상 전 레벨 기록
+    /// 0=generic만(가장 조용), 1=+error, 2=+warn, 3=+info(기본), 4=+debug(가장 상세)
     pub verbosity: Option<u8>,
     #[serde(default)]
     pub slots_endpoint: bool,
