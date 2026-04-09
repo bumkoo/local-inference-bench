@@ -22,9 +22,9 @@
 use rig::agent::{Agent, PromptResponse};
 use rig::client::CompletionClient;
 use rig::completion::{Message, PromptError, Prompt};
-use rig::providers::openai;
 
 use bge_m3_onnx_rust::BgeM3Embedder;
+use crate::llama_client::{LlamaCompletionModel, LlamaCompletionsClient};
 use crate::rag::{VectorStore, SearchStrategy, format_context};
 
 /// chat 결과 — 응답 텍스트 + 토큰 사용량
@@ -43,7 +43,7 @@ pub struct ChatResult {
 ///
 /// history에 user + assistant 메시지가 자동 push됨.
 pub async fn chat(
-    agent: &Agent<openai::CompletionModel>,
+    agent: &Agent<LlamaCompletionModel>,
     prompt: &str,
     history: &mut Vec<Message>,
 ) -> Result<ChatResult, PromptError> {
@@ -60,7 +60,7 @@ pub async fn chat(
 /// RIG의 자동 도구 호출 루프를 활용.
 /// history에 user + tool_call + tool_result + assistant 메시지가 자동 push됨.
 pub async fn chat_with_tools(
-    agent: &Agent<openai::CompletionModel>,
+    agent: &Agent<LlamaCompletionModel>,
     prompt: &str,
     history: &mut Vec<Message>,
     max_turns: usize,
@@ -81,7 +81,7 @@ pub async fn chat_with_tools(
 /// 3. 검색 결과를 system_prompt에 합침 (<file> 태그 없이)
 /// 4. agent 빌드 → chat() 호출
 pub async fn chat_with_rag(
-    client: &openai::CompletionsClient,
+    client: &LlamaCompletionsClient,
     system_prompt: &str,
     prompt: &str,
     history: &mut Vec<Message>,

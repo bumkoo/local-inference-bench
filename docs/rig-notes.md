@@ -314,4 +314,86 @@ RIG 자동 루프 대신 수동 2단계 구현 필요 — 벤치마크가 아닌
 
 ---
 
+---
+
+## 5. llama-server timings 캡처 — Custom HttpClientExt 래퍼
+
+### 문제
+
+llama-server의 `/v1/chat/completions` 응답에 `timings` 객체가 포함되지만,
+RIG의 `openai::CompletionResponse` 구조체에는 해당 필드가 없어 serde가 자동 무시함.
+
+```json
+{
+  "choices": [...],
+  "usage": {"prompt_tokens": 128, "total_tokens": 160},
+  "timings": {
+    "prompt_n": 128, "prompt_ms": 22.5, "prompt_per_second": 5688.89,
+    "predicted_n": 32, "predicted_ms": 876.3, "predicted_per_second": 36.52
+  }
+}
+```
+
+### 해결: `CompletionsClient<H>` 제네릭 활용
+
+RIG의 `CompletionsClient<H>`는 HTTP 클라이언트 타입 `H`에 대해 제네릭.
+`ClientBuilder.http_client(U)` 메서드로 커스텀 HTTP 클라이언트 주입 가능.
+
+```rust
+let (http_client, timings_store) = LlamaTimingsClient::new();
+let client: LlamaCompletionsClient = openai::Client::<reqwest::Client>::builder()
+    .api_key("local-no-key")
+    .base_url(&url)
+    .http_client(http_client)  // ← 커스텀 클라이언트 주입
+    .build()?
+    .completions_api();
+```
+
+### 인터셉트 위치: LazyBody future 내부
+
+RIG는 `send()` 반환 시점에 바디를 읽지 않음. `Response<LazyBody<U>>`를 받은 뒤,
+`response.into_body().await`로 바디를 해소할 때 비로소 `bytes()`가 호출됨.
+따라서 파싱 로직은 `LazyBody` future 내부에 위치:
+
+```rust
+let body: LazyBody<U> = Box::pin(async move {
+    let bytes: Bytes = response.bytes().await?;
+    extract_timings(&bytes, &store);  // timings 파싱 → store에 push
+    Ok(U::from(bytes))                // 원본 bytes 그대로 RIG에 전달
+});
+```
+
+### TimingsStore 수명: 실험 단위 1개 + drain
+
+- `Arc<Mutex<VecDeque<LlamaTimings>>>` — 실험 시작 시 1개 생성
+- 각 HTTP 응답마다 `push_back()`, 각 `chat()` 호출 후 `drain(..)` → JSON 변환
+- 순차 실행이므로 호출 간 섞임 없음
+
+### Tool-calling 다중 호출 처리
+
+`chat_with_tools()` 내부에서 RIG가 여러 번 HTTP 요청 (tool_call → tool_result → 재요청).
+큐에 호출 순서대로 push되므로:
+- **마지막 항목** = 최종 대사 생성 타이밍 (`response`)
+- **그 외 항목** = 도구 호출 라운드 타이밍 (`tool_rounds`)
+
+```json
+{
+  "timings": {
+    "response": {"prompt_n": 680, "predicted_n": 45, "predicted_per_second": 28.3},
+    "tool_rounds": [{"prompt_n": 512, "predicted_n": 32}],
+    "total_prompt_ms": 234.5,
+    "total_predicted_ms": 1543.2
+  }
+}
+```
+
+### 소스 참조
+
+- `src/llama_client.rs` — `LlamaTimingsClient`, `HttpClientExt` 구현, `extract_timings()`
+- `src/experiment/runner.rs` — `collect_timings()`, `TimingsStore` 생성/주입
+- RIG: `~/.cargo/registry/src/.../rig-core-0.31.0/src/http_client/mod.rs` — `HttpClientExt` trait
+- RIG: `~/.cargo/registry/src/.../rig-core-0.31.0/src/providers/openai/client.rs` — `ClientBuilder.http_client()`
+
+---
+
 *이 문서는 RIG 사용 중 발견되는 주의사항을 지속적으로 추가합니다.*

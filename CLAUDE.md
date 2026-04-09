@@ -16,6 +16,7 @@ Documentation and comments are in **Korean**. Commit messages use Korean.
 
 - **Language**: Rust (edition 2024, nightly-2026-03-20)
 - **LLM Client**: rig-core 0.31 with `derive` feature (agents, tool calling, multi-turn)
+- **Timings**: Custom `HttpClientExt` wrapper (`LlamaTimingsClient`) — llama-server timings 캡처
 - **Server**: llama-server (managed via `lmcpp-toolchain-cli` structure)
 - **Async**: tokio 1.x
 - **Embeddings**: bge-m3-onnx-rust (git dependency)
@@ -34,6 +35,7 @@ src/
 ├── feature.rs               # Feature — dispatch by type (completion/agent/agent_tool/multi_turn/rag)
 ├── server.rs                # launch_server() — builds CLI args, resolves llama-server binary
 ├── chat.rs                  # Unified chat wrappers: chat(), chat_with_tools(), chat_with_rag() → ChatResult
+├── llama_client.rs          # LlamaTimingsClient — HttpClientExt 래퍼, llama-server timings 캡처
 ├── rag.rs                   # VectorStore (Dense+Sparse), SearchStrategy (DenseOnly/Hybrid/ColBERT), knowledge loader
 ├── experiment/
 │   ├── mod.rs
@@ -100,12 +102,14 @@ python3 tools/view-runs.py [path] [limit]
 ```
 TOML configs → CLI (clap) → ExperimentRunner
   → launch_server (resolve binary → spawn llama-server)
-  → openai::CompletionsClient (via .completions_api())
+  → LlamaTimingsClient (HttpClientExt 래퍼 — timings 인터셉트)
+  → openai::CompletionsClient<LlamaTimingsClient> (via .completions_api())
   → match feature_type:
       completion/agent → chat()
       agent_tool       → chat_with_tools() (uses CheckInventory, etc.)
       multi_turn       → chat() with shared history
       rag              → chat_with_rag() (BGE-M3 encode → VectorStore search → preamble merge)
+  → collect_timings() (TimingsStore drain → JSON)
   → ExperimentStore (experiment.json metadata + runs.jsonl per-prompt logs)
 ```
 
@@ -122,6 +126,8 @@ TOML configs → CLI (clap) → ExperimentRunner
 5. **History by reference** — `chat()`, `chat_with_tools()`, `chat_with_rag()` 모두 `&mut Vec<Message>` 참조. RIG가 user/assistant 메시지를 자동 push.
 
 6. **Memory-Efficient RAG** — `RagDocument`는 dense, sparse만 영구 저장. ColBERT 리랭킹 시에는 후보 문서를 실시간으로 `embedder.encode()`하여 메모리 절약 (계산 비용과 트레이드오프).
+
+7. **llama-server timings 캡처** — RIG의 `CompletionsClient<H>` 제네릭을 활용. `LlamaTimingsClient`가 `HttpClientExt`를 구현하여, `LazyBody` future 내부에서 응답 bytes를 인터셉트 → `timings` JSON 파싱 → `TimingsStore`(Arc<Mutex<VecDeque>>)에 push. rig-core 소스 수정 없이 확장. Tool-calling 시 다중 HTTP 호출은 큐에 순서대로 누적되며, `collect_timings()`에서 마지막=response, 나머지=tool_rounds로 분리.
 
 ## Configuration System
 
@@ -159,4 +165,17 @@ Contains `system_prompt`, `repeat` count, and `[[prompts]]` (id, label, user).
 
 ## Testing
 
-Manual via `cargo run -- run`. Results inspected with `tools/view-runs.py` or `tools/jsonl-viewer.html`.
+```bash
+cargo test                       # 유닛 테스트 실행 (23개)
+cargo test -- --nocapture        # 로그 출력 포함
+cargo run -- run <p> <f> <ps>    # 수동 통합 테스트
+```
+
+유닛 테스트 (23개, `#[cfg(test)]` 인라인):
+
+| 모듈 | 테스트 수 | 대상 |
+|------|----------|------|
+| `llama_client` | 12 | LlamaTimings 역직렬화, extract_timings, LlamaTimingsClient 생성 |
+| `experiment::runner` | 11 | collect_timings, estimate_tokens, calc_tps |
+
+결과 검증: `tools/view-runs.py` 또는 `tools/jsonl-viewer.html`.

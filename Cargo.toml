@@ -11,6 +11,12 @@ ureq = "2"
 # LLM 클라이언트 프레임워크
 rig-core = { version = "0.31", features = ["derive"] }
 
+# llama-server timings 인터셉트용 (rig-core와 동일 버전)
+bytes = "1"
+http = "1"
+reqwest = { version = "0.13", features = ["json", "stream", "multipart"] }
+futures = "0.3"
+
 # 비동기 런타임
 tokio = { version = "1", features = ["full"] }
 
