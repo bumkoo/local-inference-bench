@@ -1,6 +1,7 @@
 mod chat;
 mod experiment;
 mod feature;
+mod llama_client;
 mod profile;
 mod rag;
 mod server;

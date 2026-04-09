@@ -7,6 +7,7 @@ use tracing::info;
 
 use crate::chat::{chat, chat_with_tools, chat_with_rag};
 use crate::feature::Feature;
+use crate::llama_client::{LlamaTimings, LlamaTimingsClient, LlamaCompletionsClient, TimingsStore};
 use crate::profile::ServerProfile;
 use crate::rag;
 use crate::tools::{LookupKungFu, CheckRelationship, CheckInventory};
@@ -44,19 +45,21 @@ impl ExperimentRunner {
         );
 
         // RIG OpenAI 클라이언트 → Chat Completions API 사용
-        // (기본 openai::Client는 /v1/responses를 쓰므로, .completions_api()로 전환)
-        let client = openai::Client::builder()
+        // LlamaTimingsClient로 HTTP 응답에서 llama-server timings 캡처
+        let (http_client, timings_store) = LlamaTimingsClient::new();
+        let client: LlamaCompletionsClient = openai::Client::<reqwest::Client>::builder()
             .api_key("local-no-key")
             .base_url(&self.profile.api_base_url())
+            .http_client(http_client)
             .build()?
             .completions_api();
 
         match self.feature.feature_type() {
-            "completion" => self.run_completion(&client, &mut store).await?,
-            "agent" => self.run_agent(&client, &mut store).await?,
-            "agent_tool" => self.run_agent_tool(&client, &mut store).await?,
-            "multi_turn" => self.run_multi_turn(&client, &mut store).await?,
-            "rag" => self.run_rag(&client, &mut store).await?,
+            "completion" => self.run_completion(&client, &mut store, &timings_store).await?,
+            "agent" => self.run_agent(&client, &mut store, &timings_store).await?,
+            "agent_tool" => self.run_agent_tool(&client, &mut store, &timings_store).await?,
+            "multi_turn" => self.run_multi_turn(&client, &mut store, &timings_store).await?,
+            "rag" => self.run_rag(&client, &mut store, &timings_store).await?,
             other => anyhow::bail!("알 수 없는 feature type: {}", other),
         }
 
@@ -80,8 +83,9 @@ impl ExperimentRunner {
     /// chat() 사용 — history는 프롬프트별 독립 (단일턴)
     async fn run_completion(
         &self,
-        client: &openai::CompletionsClient,
+        client: &LlamaCompletionsClient,
         store: &mut ExperimentStore,
+        timings_store: &TimingsStore,
     ) -> anyhow::Result<()> {
         let total = self.prompt_set.total_runs();
         let mut run_id = 0;
@@ -98,6 +102,7 @@ impl ExperimentRunner {
                 let start = Instant::now();
                 let result = chat(&agent, &prompt.user, &mut history).await;
                 let latency_ms = start.elapsed().as_millis() as u64;
+                let timings_json = collect_timings(timings_store);
 
                 let (response, success) = match result {
                     Ok(cr) => {
@@ -114,12 +119,14 @@ impl ExperimentRunner {
                 let tokens = estimate_tokens(&response);
                 let tps = calc_tps(tokens, latency_ms);
 
+                let extra = timings_json.map(|t| serde_json::json!({"timings": t}));
+
                 store.append_run(&RunRecord {
                     run_id, prompt_id: prompt.id.clone(), prompt_label: prompt.label.clone(),
                     repeat_index: repeat_idx, timestamp: Utc::now(),
                     system_prompt: system, user_prompt: prompt.user.clone(),
                     response, success, latency_ms, tokens_generated: tokens,
-                    tokens_per_sec: tps, extra: None,
+                    tokens_per_sec: tps, extra,
                 })?;
             }
         }
@@ -129,18 +136,20 @@ impl ExperimentRunner {
     /// Feature: agent - preamble 기반 에이전트
     async fn run_agent(
         &self,
-        client: &openai::CompletionsClient,
+        client: &LlamaCompletionsClient,
         store: &mut ExperimentStore,
+        timings_store: &TimingsStore,
     ) -> anyhow::Result<()> {
-        self.run_completion(client, store).await
+        self.run_completion(client, store, timings_store).await
     }
 
     /// Feature: agent_tool - NPC 도구 호출 (무공 조회, 관계 확인, 소지품 확인)
     /// chat.rs의 chat_with_tools() 사용 — usage 실측, history 자동 관리
     async fn run_agent_tool(
         &self,
-        client: &openai::CompletionsClient,
+        client: &LlamaCompletionsClient,
         store: &mut ExperimentStore,
+        timings_store: &TimingsStore,
     ) -> anyhow::Result<()> {
         let params = self.feature.agent_tool.as_ref()
             .ok_or_else(|| anyhow::anyhow!("agent_tool 설정 없음"))?;
@@ -169,8 +178,9 @@ impl ExperimentRunner {
                 let start = Instant::now();
                 let result = chat_with_tools(&agent, &prompt.user, &mut history, max_turns).await;
                 let latency_ms = start.elapsed().as_millis() as u64;
+                let timings_json = collect_timings(timings_store);
 
-                let (response, success, extra) = match result {
+                let (response, success, mut extra) = match result {
                     Ok(cr) => {
                         let tps = calc_tps(cr.output_tokens as usize, latency_ms);
                         log_result(latency_ms, cr.output_tokens as usize, tps, true);
@@ -198,6 +208,10 @@ impl ExperimentRunner {
                     }
                 };
 
+                if let Some(t) = timings_json {
+                    extra.as_object_mut().unwrap().insert("timings".to_string(), t);
+                }
+
                 let tokens = estimate_tokens(&response);
                 let tps = calc_tps(tokens, latency_ms);
 
@@ -217,8 +231,9 @@ impl ExperimentRunner {
     /// history에 user/assistant 자동 누적, usage 실측
     async fn run_multi_turn(
         &self,
-        client: &openai::CompletionsClient,
+        client: &LlamaCompletionsClient,
         store: &mut ExperimentStore,
+        timings_store: &TimingsStore,
     ) -> anyhow::Result<()> {
         let params = self.feature.multi_turn.as_ref()
             .ok_or_else(|| anyhow::anyhow!("multi_turn 설정 없음"))?;
@@ -241,6 +256,7 @@ impl ExperimentRunner {
                 let start = Instant::now();
                 let result = chat(&agent, &prompt.user, &mut history).await;
                 let latency_ms = start.elapsed().as_millis() as u64;
+                let timings_json = collect_timings(timings_store);
 
                 let (response, success, usage_extra) = match result {
                     Ok(cr) => {
@@ -271,12 +287,16 @@ impl ExperimentRunner {
                 let tokens = estimate_tokens(&response);
                 let tps = calc_tps(tokens, latency_ms);
 
-                let extra = serde_json::json!({
+                let mut extra = serde_json::json!({
                     "turn": turn + 1,
                     "total_turns": max_turns,
                     "usage": usage_extra,
                     "conversation": conversation_log.clone(),
                 });
+
+                if let Some(t) = timings_json {
+                    extra.as_object_mut().unwrap().insert("timings".to_string(), t);
+                }
 
                 store.append_run(&RunRecord {
                     run_id, prompt_id: prompt.id.clone(), prompt_label: prompt.label.clone(),
@@ -293,8 +313,9 @@ impl ExperimentRunner {
     /// Feature: rag - BGE-M3 벡터 검색 → preamble 합침 → LLM 응답
     async fn run_rag(
         &self,
-        client: &openai::CompletionsClient,
+        client: &LlamaCompletionsClient,
         store: &mut ExperimentStore,
+        timings_store: &TimingsStore,
     ) -> anyhow::Result<()> {
         let params = self.feature.rag.as_ref()
             .ok_or_else(|| anyhow::anyhow!("rag 설정 없음"))?;
@@ -332,6 +353,7 @@ impl ExperimentRunner {
                     &mut embedder, &vector_store, strategy,
                 ).await;
                 let latency_ms = start.elapsed().as_millis() as u64;
+                let timings_json = collect_timings(timings_store);
 
                 // 검색 결과도 기록 (디버깅용)
                 let search_results = vector_store.query(&prompt.user, &mut embedder, strategy)
@@ -367,13 +389,17 @@ impl ExperimentRunner {
                 let tokens = estimate_tokens(&response);
                 let tps = calc_tps(tokens, latency_ms);
 
-                let extra = serde_json::json!({
+                let mut extra = serde_json::json!({
                     "strategy": strategy.name(),
                     "top_k": strategy.top_k(),
                     "usage": usage_extra,
                     "search_results": search_results,
                     "knowledge_docs": vector_store.len(),
                 });
+
+                if let Some(t) = timings_json {
+                    extra.as_object_mut().unwrap().insert("timings".to_string(), t);
+                }
 
                 store.append_run(&RunRecord {
                     run_id, prompt_id: prompt.id.clone(), prompt_label: prompt.label.clone(),
@@ -386,6 +412,29 @@ impl ExperimentRunner {
         }
         Ok(())
     }
+}
+
+/// TimingsStore에서 모든 timings를 drain하여 JSON으로 변환.
+/// 단일 호출: LlamaTimings 직접 반환.
+/// 다중 호출 (tool-calling): response (마지막) + tool_rounds (나머지) 분리.
+fn collect_timings(store: &TimingsStore) -> Option<serde_json::Value> {
+    let mut timings: Vec<LlamaTimings> = store.lock().ok()?.drain(..).collect();
+    if timings.is_empty() {
+        return None;
+    }
+    if timings.len() == 1 {
+        return serde_json::to_value(timings.remove(0)).ok();
+    }
+    // 다중 호출: 마지막 = 최종 대사, 나머지 = 도구 호출 라운드
+    let response = timings.pop().unwrap();
+    let total_prompt_ms: f64 = timings.iter().map(|t| t.prompt_ms).sum::<f64>() + response.prompt_ms;
+    let total_predicted_ms: f64 = timings.iter().map(|t| t.predicted_ms).sum::<f64>() + response.predicted_ms;
+    Some(serde_json::json!({
+        "response": response,
+        "tool_rounds": timings,
+        "total_prompt_ms": total_prompt_ms,
+        "total_predicted_ms": total_predicted_ms,
+    }))
 }
 
 fn estimate_tokens(text: &str) -> usize {
