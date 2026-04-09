@@ -12,7 +12,6 @@ no_webui = false
 [debug]
 verbose_prompt = true
 log_file = "data/experiments/server.log"
-verbosity = 0
 
 [model]
 main = "C:\\Users\\bumko\\projects\\models\\gemma-4-E4B-it-Q4_K_M.gguf"
