@@ -4,6 +4,7 @@
 
 | 날짜 | 변경 내용 |
 |---|---|
+| 2026-04-09 | chat_template_kwargs 필드 추가 (Gemma 4 thinking 토글 지원) |
 | 2026-03-21 | 초안 작성. lmcpp 0.1.1 ServerArgs 기준 주요 옵션 약 40개 정리 |
 | 2026-03-21 | 미연결 필드(batch_size, cache_type_k/v) server.rs 연결 완료, 확장 우선순위 업데이트 |
 
@@ -233,6 +234,16 @@
 - **설명**: 커스텀 채팅 템플릿 지정
 - **참고**: 모델 내장 템플릿 대신 사용자 정의 가능
 
+### chat_template_kwargs
+- **타입**: `Option<String>`
+- **설명**: 채팅 템플릿에 전달할 추가 파라미터 (JSON 문자열)
+- **기본값**: 미설정
+- **CLI 플래그**: `--chat-template-kwargs`
+- **사용 예시**: Gemma 4 thinking 모드 제어
+  - 활성화: `chat_template_kwargs = '{"enable_thinking":true}'`
+  - 비활성화: `chat_template_kwargs = '{"enable_thinking":false}'`
+- **참고**: llama-server 범용 옵션. 모델별 Jinja2 템플릿이 지원하는 kwargs를 전달. `jinja = true`와 함께 사용
+
 ### special_tokens
 - **타입**: `bool`
 - **설명**: 특수 토큰 처리 활성화
@@ -343,6 +354,7 @@
 | `inference.reasoning_budget` | `--reasoning-budget` | 사용 중 |
 | `inference.jinja` | `--jinja` | 사용 중 |
 | `inference.chat_template` | `--chat-template` | 사용 중 |
+| `inference.chat_template_kwargs` | `--chat-template-kwargs` | 사용 중 |
 | `inference.special_tokens` | `--special-tokens` | 사용 중 |
 | `debug.verbose` | `--verbose` | 사용 중 |
 | `debug.verbosity` | `-lv` | 사용 중 |

@@ -1,7 +1,7 @@
-# 서버 프로파일: Gemma 4 E4B
+# 서버 프로파일: Gemma 4 E4B (Thinking 비활성화)
 [profile]
-name = "gemma4-e4b"
-description = "Gemma 4 E4B GPU 전체 오프로드"
+name = "gemma4-e4b-nothink"
+description = "Gemma 4 E4B GPU 전체 오프로드, thinking 비활성화"
 
 [server]
 host = "127.0.0.1"
@@ -31,6 +31,7 @@ type_v = "q4_0"
 
 [inference]
 jinja = true
+chat_template_kwargs = '{"enable_thinking":false}'
 
 [timeouts]
 load_secs = 180

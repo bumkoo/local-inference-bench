@@ -167,8 +167,13 @@ curl_enabled = false
 3. **KV 캐시**: f16 → q8_0 → q4_0 (같은 설정)
 4. **Speculation**: 없음 → draft_max 8 → 16 → 24 → 32
 5. **컨텍스트**: 2048 → 4096 → 8192 (VRAM 한계 확인)
+6. **Thinking 모드**: thinking ON → thinking OFF (Gemma 4 등 `chat_template_kwargs` 지원 모델)
 
 ```bash
+# 예: Gemma 4 thinking 모드 비교
+cargo run -- run gemma4-e4b-think   basic-completion npc-dialogue
+cargo run -- run gemma4-e4b-nothink basic-completion npc-dialogue
+
 # 예: 캐시 타입 비교
 cargo run -- run qwen3-8b-f16cache   basic-completion npc-dialogue
 cargo run -- run qwen3-8b-q8cache    basic-completion npc-dialogue
