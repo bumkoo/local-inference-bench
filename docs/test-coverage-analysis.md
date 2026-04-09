@@ -2,14 +2,20 @@
 
 ## 현재 상태
 
-코드베이스에 자동화된 테스트가 **전혀 없음** (0% 커버리지).
+유닛 테스트 **23개** 구현 (`#[cfg(test)]` 인라인 모듈).
 
-- `#[test]` 또는 `#[cfg(test)]` 블록 없음
-- `tests/` 통합 테스트 디렉토리 없음
-- `Cargo.toml`에 `dev-dependencies` 없음
-- 테스트는 수동으로 `cargo run -- run` 실험 실행으로만 수행
+| 모듈 | 테스트 수 | 대상 함수 | 비고 |
+|------|----------|----------|------|
+| `llama_client` | 12 | `LlamaTimings` 역직렬화 (4), `extract_timings` (5), `LlamaTimingsClient` 생성 (2), roundtrip (1) | private 함수 → 인라인 테스트 |
+| `experiment::runner` | 11 | `collect_timings` (5), `estimate_tokens` (4), `calc_tps` (3) | private 함수 → 인라인 테스트 |
 
-총 소스 코드: ~2,221줄 (15개 파일), 모두 테스트 미작성 상태.
+```bash
+cargo test                       # 전체 실행
+cargo test llama_client          # 모듈별 실행
+cargo test -- --nocapture        # 로그 출력 포함
+```
+
+수동 통합 테스트: `cargo run -- run` 실험 실행, `tools/view-runs.py` 또는 `tools/jsonl-viewer.html`로 결과 검증.
 
 ---
 
@@ -65,46 +71,13 @@ mod tests {
 
 ---
 
-### 2. [최우선] 토큰 추정 및 통계 계산
+### 2. [최우선] 토큰 추정 및 통계 계산 — ✅ 구현 완료
 
-**`estimate_tokens()` (`src/experiment/runner.rs:391`)**
+**`estimate_tokens()`, `calc_tps()` (`src/experiment/runner.rs`)**
 
-CJK + ASCII 혼합 텍스트의 토큰 수 추정 로직. 벤치마크 지표의 정확도에 직접 영향.
-
-```rust
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_estimate_tokens_ascii_only() {
-        // "hello world" → 2 words × 1.3 = 2
-        assert_eq!(estimate_tokens("hello world"), 2);
-    }
-
-    #[test]
-    fn test_estimate_tokens_cjk_only() {
-        // "안녕하세요" → 5 CJK chars
-        assert_eq!(estimate_tokens("안녕하세요"), 5);
-    }
-
-    #[test]
-    fn test_estimate_tokens_mixed() {
-        // CJK + ASCII 혼합
-        assert_eq!(estimate_tokens("안녕 hello world"), 2 + 2); // 2 CJK + 2 ASCII words × 1.3
-    }
-
-    #[test]
-    fn test_estimate_tokens_empty() {
-        assert_eq!(estimate_tokens(""), 0);
-    }
-
-    #[test]
-    fn test_calc_tps_zero_latency() {
-        assert_eq!(calc_tps(100, 0), 0.0);
-    }
-}
-```
+`#[cfg(test)] mod tests` 인라인 테스트 7개 구현:
+- `estimate_tokens`: ASCII (2), CJK (5), 혼합 (3), 빈 문자열 (0)
+- `calc_tps`: 정상 (50.0), 0 latency (0.0), 0 tokens (0.0)
 
 **`ExperimentStore::finalize()` (`src/experiment/store.rs:113`)**
 
@@ -235,9 +208,10 @@ fn test_filter_server_log_missing_file() {
 
 ### 권장 커버리지 목표
 
-| 단계 | 대상 | 목표 |
+| 단계 | 대상 | 상태 |
 |------|------|------|
-| 1단계 | 순수 함수 (estimate_tokens, calc_tps, format_context, filter_server_log) | 100% |
+| 1단계 | 순수 함수 (estimate_tokens, calc_tps, format_context, filter_server_log) | ✅ estimate_tokens, calc_tps 완료 |
+| 1단계 | llama_client (LlamaTimings 역직렬화, extract_timings, collect_timings) | ✅ 완료 (23개) |
 | 2단계 | RAG 검색 알고리즘 | 분기 커버리지 90%+ |
 | 3단계 | 설정 파싱 + 직렬화 | 정상 경로 + 에러 경로 |
 | 4단계 | 도구 구현체 | 모든 조회 키 커버 |
@@ -246,12 +220,13 @@ fn test_filter_server_log_missing_file() {
 
 ## 요약
 
-| 우선순위 | 영역 | 이유 |
+| 우선순위 | 영역 | 상태 |
 |---------|------|------|
-| 최우선 | RAG 검색 알고리즘 | 가장 복잡, 알고리즘 정확성 미검증 |
-| 최우선 | 토큰 추정/통계 계산 | 벤치마크 지표에 직접 영향 |
-| 높음 | TOML 설정 파싱 | 설정 오류 시 런타임 실패 |
-| 높음 | 직렬화 라운드트립 | 데이터 무결성 보장 |
-| 중간 | 로그 필터링 | 쉽게 테스트 가능, 텍스트 처리 |
-| 중간 | 도구 구현체 | 데이터 변경 시 회귀 방지 |
-| 낮음 | 서버 인자 빌드 | 외부 의존성으로 분리 필요 |
+| 최우선 | RAG 검색 알고리즘 | 미구현 — 가장 복잡, 알고리즘 정확성 미검증 |
+| 최우선 | 토큰 추정/통계 계산 | ✅ 구현 완료 (7개) |
+| 최우선 | llama-server timings 캡처 | ✅ 구현 완료 (16개) |
+| 높음 | TOML 설정 파싱 | 미구현 — 설정 오류 시 런타임 실패 |
+| 높음 | 직렬화 라운드트립 | 미구현 — 데이터 무결성 보장 |
+| 중간 | 로그 필터링 | 미구현 — 쉽게 테스트 가능, 텍스트 처리 |
+| 중간 | 도구 구현체 | 미구현 — 데이터 변경 시 회귀 방지 |
+| 낮음 | 서버 인자 빌드 | 미구현 — 외부 의존성으로 분리 필요 |
