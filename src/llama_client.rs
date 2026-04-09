@@ -104,6 +104,159 @@ fn extract_timings(bytes: &[u8], store: &TimingsStore) {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// llama-server 실제 응답 형태의 JSON (timings 포함)
+    fn sample_response_json() -> String {
+        serde_json::json!({
+            "id": "chatcmpl-abc123",
+            "object": "chat.completion",
+            "created": 1700000000,
+            "model": "local-model",
+            "choices": [{
+                "index": 0,
+                "message": {"role": "assistant", "content": "안녕하시오, 대협."},
+                "finish_reason": "stop"
+            }],
+            "usage": {"prompt_tokens": 128, "total_tokens": 160},
+            "timings": {
+                "prompt_n": 128,
+                "prompt_ms": 22.5,
+                "prompt_per_token_ms": 0.176,
+                "prompt_per_second": 5688.89,
+                "predicted_n": 32,
+                "predicted_ms": 876.3,
+                "predicted_per_token_ms": 27.38,
+                "predicted_per_second": 36.52
+            }
+        }).to_string()
+    }
+
+    // ----------------------------------------------------------------
+    // LlamaTimings 역직렬화
+    // ----------------------------------------------------------------
+    #[test]
+    fn test_timings_deserialize_full() {
+        let json = r#"{
+            "prompt_n": 512,
+            "prompt_ms": 89.2,
+            "prompt_per_token_ms": 0.174,
+            "prompt_per_second": 5740.1,
+            "predicted_n": 45,
+            "predicted_ms": 1234.5,
+            "predicted_per_token_ms": 27.43,
+            "predicted_per_second": 36.45
+        }"#;
+        let t: LlamaTimings = serde_json::from_str(json).unwrap();
+        assert_eq!(t.prompt_n, 512);
+        assert_eq!(t.predicted_n, 45);
+        assert!((t.predicted_per_second - 36.45).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_timings_deserialize_partial_fields() {
+        // 일부 필드만 있어도 #[serde(default)]로 0 채워짐
+        let json = r#"{"prompt_n": 100, "predicted_n": 20}"#;
+        let t: LlamaTimings = serde_json::from_str(json).unwrap();
+        assert_eq!(t.prompt_n, 100);
+        assert_eq!(t.predicted_n, 20);
+        assert_eq!(t.prompt_ms, 0.0);
+        assert_eq!(t.predicted_per_second, 0.0);
+    }
+
+    #[test]
+    fn test_timings_deserialize_empty_object() {
+        let t: LlamaTimings = serde_json::from_str("{}").unwrap();
+        assert_eq!(t.prompt_n, 0);
+        assert_eq!(t.predicted_n, 0);
+    }
+
+    #[test]
+    fn test_timings_serialize_roundtrip() {
+        let original = LlamaTimings {
+            prompt_n: 256, prompt_ms: 44.8,
+            prompt_per_token_ms: 0.175, prompt_per_second: 5714.3,
+            predicted_n: 64, predicted_ms: 1800.0,
+            predicted_per_token_ms: 28.13, predicted_per_second: 35.56,
+        };
+        let json = serde_json::to_string(&original).unwrap();
+        let parsed: LlamaTimings = serde_json::from_str(&json).unwrap();
+        assert_eq!(original.prompt_n, parsed.prompt_n);
+        assert_eq!(original.predicted_n, parsed.predicted_n);
+        assert!((original.predicted_per_second - parsed.predicted_per_second).abs() < 0.001);
+    }
+
+    // ----------------------------------------------------------------
+    // extract_timings — 응답 bytes → TimingsStore push
+    // ----------------------------------------------------------------
+    #[test]
+    fn test_extract_timings_from_valid_response() {
+        let store: TimingsStore = Arc::new(Mutex::new(VecDeque::new()));
+        let response = sample_response_json();
+        extract_timings(response.as_bytes(), &store);
+
+        let guard = store.lock().unwrap();
+        assert_eq!(guard.len(), 1);
+        assert_eq!(guard[0].prompt_n, 128);
+        assert_eq!(guard[0].predicted_n, 32);
+        assert!((guard[0].predicted_per_second - 36.52).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_extract_timings_no_timings_field() {
+        let store: TimingsStore = Arc::new(Mutex::new(VecDeque::new()));
+        // timings 필드 없는 응답 (OpenAI 순정 응답)
+        let json = r#"{"id": "abc", "choices": [], "usage": {"prompt_tokens": 10, "total_tokens": 20}}"#;
+        extract_timings(json.as_bytes(), &store);
+        assert!(store.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn test_extract_timings_invalid_json() {
+        let store: TimingsStore = Arc::new(Mutex::new(VecDeque::new()));
+        extract_timings(b"not json at all", &store);
+        assert!(store.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn test_extract_timings_invalid_utf8() {
+        let store: TimingsStore = Arc::new(Mutex::new(VecDeque::new()));
+        extract_timings(&[0xff, 0xfe, 0x00], &store);
+        assert!(store.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn test_extract_timings_multiple_calls_accumulate() {
+        let store: TimingsStore = Arc::new(Mutex::new(VecDeque::new()));
+        let response = sample_response_json();
+        // 3회 호출 → 3개 누적
+        extract_timings(response.as_bytes(), &store);
+        extract_timings(response.as_bytes(), &store);
+        extract_timings(response.as_bytes(), &store);
+        assert_eq!(store.lock().unwrap().len(), 3);
+    }
+
+    // ----------------------------------------------------------------
+    // LlamaTimingsClient 생성
+    // ----------------------------------------------------------------
+    #[test]
+    fn test_new_returns_shared_store() {
+        let (client, store) = LlamaTimingsClient::new();
+        // client 내부 store와 반환된 store가 같은 Arc
+        assert!(Arc::ptr_eq(&client.store, &store));
+    }
+
+    #[test]
+    fn test_default_creates_independent_store() {
+        let c1 = LlamaTimingsClient::default();
+        let c2 = LlamaTimingsClient::default();
+        // default끼리는 독립적인 store
+        assert!(!Arc::ptr_eq(&c1.store, &c2.store));
+    }
+}
+
 // ================================================================
 // HttpClientExt 구현 — reqwest::Client 구현을 미러링하되
 // send()의 LazyBody 내부에서 timings 인터셉트 추가

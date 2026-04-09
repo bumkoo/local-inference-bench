@@ -458,3 +458,149 @@ fn log_result(latency_ms: u64, tokens: usize, tps: f64, success: bool) {
         info!("  실패: {}ms", latency_ms);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::VecDeque;
+    use std::sync::{Arc, Mutex};
+
+    fn make_timings(prompt_n: u64, predicted_n: u64, prompt_ms: f64, predicted_ms: f64) -> LlamaTimings {
+        LlamaTimings {
+            prompt_n, prompt_ms,
+            prompt_per_token_ms: if prompt_n > 0 { prompt_ms / prompt_n as f64 } else { 0.0 },
+            prompt_per_second: if prompt_ms > 0.0 { prompt_n as f64 / (prompt_ms / 1000.0) } else { 0.0 },
+            predicted_n, predicted_ms,
+            predicted_per_token_ms: if predicted_n > 0 { predicted_ms / predicted_n as f64 } else { 0.0 },
+            predicted_per_second: if predicted_ms > 0.0 { predicted_n as f64 / (predicted_ms / 1000.0) } else { 0.0 },
+        }
+    }
+
+    fn make_store(items: Vec<LlamaTimings>) -> TimingsStore {
+        Arc::new(Mutex::new(VecDeque::from(items)))
+    }
+
+    // ----------------------------------------------------------------
+    // collect_timings
+    // ----------------------------------------------------------------
+    #[test]
+    fn test_collect_timings_empty_store() {
+        let store = make_store(vec![]);
+        assert!(collect_timings(&store).is_none());
+    }
+
+    #[test]
+    fn test_collect_timings_single_call() {
+        let t = make_timings(512, 45, 89.2, 1234.5);
+        let store = make_store(vec![t]);
+        let result = collect_timings(&store).unwrap();
+
+        // 단일 호출: LlamaTimings 직접 반환 (response/tool_rounds 분리 없음)
+        assert_eq!(result["prompt_n"], 512);
+        assert_eq!(result["predicted_n"], 45);
+        assert!(result.get("response").is_none());
+        assert!(result.get("tool_rounds").is_none());
+    }
+
+    #[test]
+    fn test_collect_timings_multi_call_tool_calling() {
+        // tool-calling: 2회 호출 (도구 1회 + 최종 대사 1회)
+        let tool_round = make_timings(300, 20, 50.0, 600.0);
+        let final_response = make_timings(500, 45, 80.0, 1200.0);
+        let store = make_store(vec![tool_round, final_response]);
+
+        let result = collect_timings(&store).unwrap();
+
+        // 마지막 = response, 나머지 = tool_rounds
+        assert_eq!(result["response"]["prompt_n"], 500);
+        assert_eq!(result["response"]["predicted_n"], 45);
+        assert_eq!(result["tool_rounds"].as_array().unwrap().len(), 1);
+        assert_eq!(result["tool_rounds"][0]["prompt_n"], 300);
+
+        // 합산 검증
+        let total_prompt_ms = result["total_prompt_ms"].as_f64().unwrap();
+        assert!((total_prompt_ms - 130.0).abs() < 0.01); // 50.0 + 80.0
+        let total_predicted_ms = result["total_predicted_ms"].as_f64().unwrap();
+        assert!((total_predicted_ms - 1800.0).abs() < 0.01); // 600.0 + 1200.0
+    }
+
+    #[test]
+    fn test_collect_timings_three_calls() {
+        // tool-calling 2회 + 최종 대사 1회
+        let t1 = make_timings(200, 15, 30.0, 400.0);
+        let t2 = make_timings(350, 25, 55.0, 700.0);
+        let t3 = make_timings(500, 50, 85.0, 1400.0);
+        let store = make_store(vec![t1, t2, t3]);
+
+        let result = collect_timings(&store).unwrap();
+
+        assert_eq!(result["response"]["predicted_n"], 50);
+        assert_eq!(result["tool_rounds"].as_array().unwrap().len(), 2);
+        assert_eq!(result["tool_rounds"][0]["predicted_n"], 15);
+        assert_eq!(result["tool_rounds"][1]["predicted_n"], 25);
+
+        let total_prompt_ms = result["total_prompt_ms"].as_f64().unwrap();
+        assert!((total_prompt_ms - 170.0).abs() < 0.01); // 30 + 55 + 85
+    }
+
+    #[test]
+    fn test_collect_timings_drains_store() {
+        let store = make_store(vec![
+            make_timings(100, 10, 10.0, 100.0),
+            make_timings(200, 20, 20.0, 200.0),
+        ]);
+
+        // 첫 drain
+        let _ = collect_timings(&store);
+        assert!(store.lock().unwrap().is_empty());
+
+        // 두 번째 호출: 빈 store → None
+        assert!(collect_timings(&store).is_none());
+    }
+
+    // ----------------------------------------------------------------
+    // estimate_tokens
+    // ----------------------------------------------------------------
+    #[test]
+    fn test_estimate_tokens_ascii_only() {
+        // "hello world" → 2 ASCII words × 1.3 = 2
+        assert_eq!(estimate_tokens("hello world"), 2);
+    }
+
+    #[test]
+    fn test_estimate_tokens_cjk_only() {
+        // "안녕하세요" → 5 한글 글자 (CJK 범위)
+        assert_eq!(estimate_tokens("안녕하세요"), 5);
+    }
+
+    #[test]
+    fn test_estimate_tokens_mixed() {
+        // "안녕 hello" → CJK 2자 + ASCII 1단어 × 1.3 = 2 + 1 = 3
+        assert_eq!(estimate_tokens("안녕 hello"), 3);
+    }
+
+    #[test]
+    fn test_estimate_tokens_empty() {
+        assert_eq!(estimate_tokens(""), 0);
+    }
+
+    // ----------------------------------------------------------------
+    // calc_tps
+    // ----------------------------------------------------------------
+    #[test]
+    fn test_calc_tps_normal() {
+        // 100 tokens / 2000ms = 50 tok/s
+        let tps = calc_tps(100, 2000);
+        assert!((tps - 50.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_calc_tps_zero_latency() {
+        assert_eq!(calc_tps(100, 0), 0.0);
+    }
+
+    #[test]
+    fn test_calc_tps_zero_tokens() {
+        assert_eq!(calc_tps(0, 1000), 0.0);
+    }
+}
