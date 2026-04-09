@@ -174,6 +174,7 @@ fn build_cli_args(
         a.push("--jinja".into());
     }
     push_opt_str(&mut a, "--chat-template", &profile.inference.chat_template);
+    push_opt_str(&mut a, "--chat-template-kwargs", &profile.inference.chat_template_kwargs);
     if profile.inference.special_tokens {
         a.push("--special-tokens".into());
     }

@@ -126,6 +126,7 @@ pub struct InferenceConfig {
     #[serde(default)]
     pub jinja: bool,
     pub chat_template: Option<String>,
+    pub chat_template_kwargs: Option<String>,
     #[serde(default)]
     pub special_tokens: bool,
 }
